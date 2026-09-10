@@ -1,0 +1,2376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Media Exporter</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pica/10.0.0/pica.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script type="module">
+  import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs';
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+  window.pdfjsLib = pdfjsLib;
+</script>
+<style>
+  :root{
+    --indigo-50:#eef3fb; --indigo-100:#d5e1f6; --indigo-500:#407add; --indigo-600:#1d4fa4; --indigo-700:#153874;
+    --slate-50:#f8fafc; --slate-100:#f1f5f9; --slate-200:#e2e8f0; --slate-300:#cbd5e1;
+    --slate-400:#94a3b8; --slate-500:#64748b; --slate-600:#475569; --slate-700:#334155; --slate-900:#0f172a;
+    --emerald-50:#ecfdf5; --emerald-500:#10b981; --emerald-600:#059669; --emerald-700:#047857;
+    --red-50:#fef2f2; --red-500:#ef4444; --red-600:#dc2626;
+    --amber-500:#f59e0b;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    background:var(--slate-50); color:var(--slate-900); overflow:hidden;
+  }
+  ::-webkit-scrollbar{width:6px;height:6px;}
+  ::-webkit-scrollbar-thumb{background:var(--slate-300);border-radius:99px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+
+  .app{display:flex; height:100vh; width:100vw;}
+
+  /* ---------- Sidebar ---------- */
+  .sidebar{
+    width:288px; flex-shrink:0; background:#fff; border-right:1px solid var(--slate-200);
+    display:flex; flex-direction:column; justify-content:space-between;
+  }
+  .sidebar-scroll{flex:1; overflow-y:auto; display:flex; flex-direction:column;}
+  .brand{padding:24px; border-bottom:1px solid var(--slate-100);}
+  .brand-title{font-size:18px; font-weight:800; color:var(--indigo-600); letter-spacing:-0.02em; margin:0;}
+  .brand-sub{font-size:11px; color:var(--slate-400); font-weight:500; margin:4px 0 0;}
+
+  .section{padding:20px 20px 4px;}
+  .section-label{
+    font-size:10px; font-weight:700; color:var(--slate-400); text-transform:uppercase;
+    letter-spacing:.08em; margin:0 0 12px; padding:0 4px;
+  }
+
+  input[type="text"]{
+    width:100%; padding:8px 12px; font-size:12px; background:#fff; border:1px solid var(--slate-200);
+    border-radius:8px; color:var(--slate-700); outline:none; transition:.15s;
+  }
+  input[type="text"]:focus{border-color:var(--indigo-500); box-shadow:0 0 0 3px rgba(64,122,221,.15);}
+  input[type="text"]::placeholder{color:var(--slate-400);}
+
+  select{
+    width:100%; padding:7px 10px; font-size:12px; font-weight:600; background:#fff;
+    border:1px solid var(--slate-200); border-radius:8px; color:var(--slate-700); outline:none;
+    transition:.15s; font-family:inherit; cursor:pointer;
+  }
+  select:focus{border-color:var(--indigo-500); box-shadow:0 0 0 3px rgba(64,122,221,.15);}
+  .card-body select{margin-bottom:2px;}
+
+  .ui-original-name{
+    display:flex; align-items:center; justify-content:space-between; gap:6px; background:var(--slate-50);
+    border:1px solid var(--slate-200); border-radius:6px; padding:5px 8px; cursor:pointer; transition:.15s;
+  }
+  .ui-original-name:hover{border-color:var(--indigo-300, var(--indigo-500)); background:var(--indigo-50);}
+  .ui-original-name-text{
+    font-size:10px; color:var(--slate-500); font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;
+  }
+  .ui-original-name svg{flex-shrink:0; color:var(--slate-400);}
+  .ui-match-note{font-size:10px; font-weight:700; color:var(--emerald-700); background:var(--emerald-50); padding:3px 7px; border-radius:5px;}
+  .ui-match-note-broad{color:var(--indigo-700); background:var(--indigo-50);}
+
+  .dropzone{
+    border:2px dashed var(--slate-200); border-radius:12px; padding:18px 12px; text-align:center;
+    cursor:pointer; transition:.15s; background:rgba(248,250,252,.5);
+  }
+  .dropzone:hover{border-color:var(--slate-300);}
+  .dropzone.drag{border-color:var(--indigo-500); background:rgba(238,243,251,.5);}
+  .dropzone svg{margin:0 auto 8px; display:block; color:var(--slate-400);}
+  .dropzone .t1{font-size:12px; font-weight:600; color:var(--slate-600); margin:0;}
+  .dropzone .t2{font-size:9px; color:var(--slate-400); margin:2px 0 0;}
+
+  .btn{
+    width:100%; padding:9px 12px; border-radius:10px; font-size:12px; font-weight:600;
+    border:1px solid var(--slate-200); background:#fff; color:var(--slate-700); cursor:pointer;
+    display:flex; align-items:center; justify-content:center; gap:6px; transition:.15s;
+    box-shadow:0 1px 2px rgba(0,0,0,.03);
+  }
+  .btn:hover{border-color:var(--indigo-200,#b6caec); background:rgba(238,243,251,.4); color:var(--indigo-700);}
+  .btn:disabled{opacity:.4; cursor:not-allowed;}
+  .btn-primary{
+    background:var(--indigo-600); color:#fff; border:none; font-weight:700; padding:10px 12px;
+    box-shadow:0 4px 10px rgba(79,70,229,.18);
+  }
+  .btn-primary:hover{background:var(--indigo-700); color:#fff;}
+  .btn-primary:disabled{opacity:.45;}
+  .btn-row{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .btn-danger:hover{border-color:#fecaca; background:var(--red-50); color:var(--red-600);}
+
+  .fmt-row{display:flex; gap:8px;}
+  .fmt-pill{
+    flex:1; border:1px solid var(--slate-200); border-radius:10px; padding:8px 10px; cursor:pointer;
+    display:flex; align-items:center; gap:8px; font-size:12px; font-weight:600; color:var(--slate-600);
+    transition:.15s; background:#fff;
+  }
+  .fmt-pill.on{border-color:var(--indigo-600); background:rgba(238,243,251,.4); color:var(--indigo-900,#0f2a57);}
+  .fmt-pill input{accent-color:var(--indigo-600); width:14px; height:14px;}
+
+  .page-select-row{
+    width:100%; flex:none; justify-content:flex-start; box-sizing:border-box;
+  }
+  .page-select-all{margin-bottom:2px;}
+  .page-select-list{
+    max-height:280px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;
+    padding-right:2px;
+  }
+
+  .ratio-badge{
+    display:flex; align-items:center; justify-content:space-between; background:var(--slate-50);
+    border:1px solid var(--slate-200); border-radius:10px; padding:10px 12px; font-size:11px;
+  }
+  .ratio-badge b{color:var(--slate-700); font-weight:700;}
+  .ratio-chip{
+    font-size:9px; font-weight:700; background:var(--indigo-50); color:var(--indigo-600);
+    padding:3px 7px; border-radius:6px; border:1px solid var(--indigo-100);
+  }
+
+  .footer{padding:16px 20px; border-top:1px solid var(--slate-100);}
+  .selected-count{font-size:11px; color:var(--slate-500); margin-bottom:10px; text-align:center;}
+  .selected-count b{color:var(--slate-700); font-weight:700;}
+
+  /* ---------- Main ---------- */
+  .main{flex:1; overflow-y:auto; background:var(--slate-50); padding:28px;}
+  .empty{
+    height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:var(--slate-400); gap:10px; text-align:center;
+  }
+  .empty svg{color:var(--slate-300);}
+  .empty .t1{font-size:14px; font-weight:600; color:var(--slate-500);}
+  .empty .t2{font-size:12px; max-width:320px;}
+
+  .grid{
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:18px;
+  }
+  .card{
+    background:#fff; border:1px solid var(--slate-200); border-radius:14px; overflow:hidden;
+    box-shadow:0 1px 3px rgba(15,23,42,.04); display:flex; flex-direction:column; transition:.15s;
+  }
+  .card.unchecked{opacity:.45;}
+  .thumb-wrap{position:relative; aspect-ratio:16/9; background:var(--slate-900); overflow:hidden;}
+  .thumb-wrap img{width:100%; height:100%; object-fit:cover; object-position:center bottom; display:block;}
+  .thumb-check{
+    position:absolute; top:8px; left:8px; width:20px; height:20px; border-radius:6px;
+    background:rgba(255,255,255,.9); display:flex; align-items:center; justify-content:center; cursor:pointer;
+    box-shadow:0 1px 3px rgba(0,0,0,.2);
+  }
+  .thumb-check input{width:14px; height:14px; accent-color:var(--indigo-600); cursor:pointer;}
+  .thumb-remove{
+    position:absolute; top:8px; right:8px; width:22px; height:22px; border-radius:6px;
+    background:rgba(15,23,42,.55); color:#fff; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; opacity:0; transition:.15s;
+  }
+  .thumb-wrap:hover .thumb-remove{opacity:1;}
+  .thumb-remove:hover{background:var(--red-600);}
+  .card-body{padding:10px 12px 12px; display:flex; flex-direction:column; gap:6px;}
+  .card-body input[type="text"]{font-size:12px; font-weight:600; padding:6px 8px;}
+  .card-meta{display:flex; justify-content:space-between; align-items:center; font-size:10px; color:var(--slate-400);}
+  .card-meta .badge{
+    font-size:9px; font-weight:700; background:var(--emerald-50); color:var(--emerald-700);
+    padding:2px 6px; border-radius:5px;
+  }
+
+  .toast{
+    position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:var(--slate-900); color:#fff;
+    padding:10px 18px; border-radius:10px; font-size:12px; font-weight:600; box-shadow:0 8px 24px rgba(0,0,0,.25);
+    opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:50;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(-4px);}
+
+  /* ---------- Tabs ---------- */
+  .tabs{display:flex; gap:4px; padding:4px; margin:0 20px 4px; background:var(--slate-100); border-radius:10px;}
+  .tab{
+    flex:1; text-align:center; padding:7px 2px; font-size:10px; font-weight:700; color:var(--slate-500);
+    border-radius:8px; cursor:pointer; transition:.15s; user-select:none;
+  }
+  .tab.active{background:#fff; color:var(--indigo-600); box-shadow:0 1px 3px rgba(15,23,42,.08);}
+  .tab:not(.active):hover{color:var(--slate-700);}
+
+  /* ---------- Floor plan squares & status ---------- */
+  .thumb-wrap.square{aspect-ratio:1/1;}
+  .thumb-wrap.square img{object-position:center center;}
+  .fp-status{
+    display:flex; align-items:center; justify-content:center; height:100%; color:var(--slate-400);
+    font-size:11px; text-align:center; padding:14px; line-height:1.4;
+  }
+  .fp-status.fp-error{color:#fca5a5;}
+  .fp-sparse-warning{
+    font-size:10px; font-weight:700; color:#92400e; background:#fef3c7; border:1px solid #fde68a;
+    padding:5px 8px; border-radius:6px; line-height:1.35; cursor:help;
+  }
+  .card-body .btn.crop-btn{margin-top:2px;}
+  .vpos-control{display:flex; align-items:center; gap:6px; font-size:9px; color:var(--slate-400); font-weight:700; text-transform:uppercase; letter-spacing:.04em;}
+  .vpos-control input[type="range"]{flex:1; accent-color:var(--indigo-600); height:14px; margin:0;}
+
+  /* ---------- Crop modal ---------- */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(15,23,42,.78); display:flex; align-items:center;
+    justify-content:center; z-index:100; padding:24px;
+  }
+  .modal-overlay.hidden{display:none;}
+  .crop-modal{
+    background:#111827; border-radius:16px; padding:20px; display:flex; flex-direction:column; gap:12px;
+    max-width:94vw; max-height:94vh; box-shadow:0 20px 60px rgba(0,0,0,.5);
+  }
+  .crop-modal h3{color:#fff; font-size:14px; font-weight:700; margin:0;}
+  .crop-modal h3 span{color:var(--indigo-500,#6a96e1); font-weight:800;}
+  .crop-modal .hint{color:var(--slate-400); font-size:11px; margin:-6px 0 0;}
+  .crop-stage{position:relative; background:#000; overflow:hidden; touch-action:none; align-self:center; border-radius:4px;}
+  .preview-stage{background:#000; border-radius:6px; overflow:hidden; align-self:center; line-height:0;}
+  .preview-stage canvas{display:block;}
+  .crop-stage canvas{display:block; pointer-events:none;}
+  .crop-box{position:absolute; border:2px solid #fff; box-shadow:0 0 0 9999px rgba(0,0,0,.6); cursor:move; transition:opacity .15s;}
+  .crop-handle{
+    position:absolute; width:18px; height:18px; background:#fff; border:2px solid var(--indigo-600);
+    border-radius:4px; right:2px; bottom:2px; cursor:nwse-resize; box-shadow:0 1px 4px rgba(0,0,0,.4);
+  }
+  .crop-actions{display:flex; justify-content:flex-end; gap:8px;}
+  .crop-actions .btn{width:auto; padding:9px 16px;}
+
+  /* ---------- Stamp tool ---------- */
+  .crop-toolbar{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .crop-modebtn{
+    font-family:inherit; border:1px solid rgba(255,255,255,.1); padding:7px 12px; border-radius:8px;
+    font-size:11px; font-weight:700; color:#cbd5e1; background:rgba(255,255,255,.06);
+    cursor:pointer; transition:.15s;
+  }
+  .crop-modebtn.active{background:var(--indigo-600); color:#fff; border-color:var(--indigo-600);}
+  .crop-modebtn:disabled{opacity:.35; cursor:not-allowed;}
+  .crop-modebtn:not(.active):not(:disabled):hover{background:rgba(255,255,255,.14);}
+  .crop-toolbar-spacer{flex:1;}
+  .brush-label{display:flex; align-items:center; gap:6px; font-size:11px; color:#94a3b8; font-weight:600; white-space:nowrap;}
+  .brush-label input[type="range"]{accent-color:var(--indigo-600); width:90px;}
+  .crop-toolbar .btn{width:auto; padding:7px 12px; font-size:11px;}
+  .sample-marker{
+    position:absolute; border:2px dashed #22d3ee; border-radius:50%; pointer-events:none; display:none; z-index:4;
+  }
+  .brush-cursor{
+    position:absolute; border:2px solid #22d3ee; background:rgba(34,211,238,.12); border-radius:50%;
+    pointer-events:none; display:none; z-index:5;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-scroll">
+      <div class="brand">
+        <p class="brand-title">Media Exporter</p>
+        <p class="brand-sub">Amenity, Unit &amp; Floor Plan Photos</p>
+      </div>
+
+      <div class="tabs">
+        <div class="tab active" id="tabAmenities">Amenity</div>
+        <div class="tab" id="tabUnitImages">Unit Images</div>
+        <div class="tab" id="tabFloorplans">Floor Plans</div>
+      </div>
+
+      <div id="amenitySidebar">
+      <div class="section">
+        <p class="section-label">Photos</p>
+        <div class="dropzone" id="dropzone">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A5 5 0 0 1 6 5.3a6 6 0 0 1 11.3-2A5.5 5.5 0 0 1 20 13.8"/><path d="M12 12v8"/><path d="m9 15 3-3 3 3"/></svg>
+          <p class="t1">Upload Amenity Photos</p>
+          <p class="t2">JPG, PNG or WEBP</p>
+        </div>
+        <input type="file" id="fileInput" accept="image/*" multiple style="display:none" />
+      </div>
+
+      <div class="section">
+        <p class="section-label">Export Size</p>
+        <div class="ratio-badge">
+          <span>Crop &amp; Export</span>
+          <span class="ratio-chip">16:9 · 1920×1080 · 300ppi</span>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-label">Export Format</p>
+        <div class="fmt-row">
+          <label class="fmt-pill on" id="jpgPill">
+            <input type="checkbox" id="fmtJpg" checked disabled /> JPG
+          </label>
+        </div>
+      </div>
+
+      <div class="section" id="actionsSection" style="display:none;">
+        <p class="section-label">Controls &amp; Actions</p>
+        <div class="btn-row">
+          <button class="btn" id="restartBtn" title="Select all & reset labels">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            Restart
+          </button>
+          <button class="btn btn-danger" id="clearBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+            Clear
+          </button>
+        </div>
+      </div>
+      </div>
+      <!-- /amenitySidebar -->
+
+      <div id="unitSidebar" style="display:none;">
+        <div class="section">
+          <p class="section-label">Unit Data (CSV)</p>
+          <button type="button" class="btn" id="uiCsvBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Upload Unit Data CSV
+          </button>
+          <input type="file" id="uiCsvInput" accept=".csv,text/csv" style="display:none" />
+          <p class="t2" id="uiCsvStatus" style="margin-top:6px; text-align:left; padding:0 2px;">No CSV loaded — matched by unit number or floor plan name in each image's filename.</p>
+          <div style="margin-top:10px;">
+            <p class="section-label" style="margin-bottom:6px;">Property ID</p>
+            <input type="text" id="uiPropertyId" placeholder="Auto-filled from CSV name" />
+          </div>
+          <button type="button" class="btn" id="uiConfigCsvBtn" style="margin-top:8px;" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download Config CSV
+          </button>
+        </div>
+
+        <div class="section">
+          <p class="section-label">Fallback Floor Plan Name</p>
+          <input type="text" id="uiFloorPlanName" placeholder="e.g. Cerulean" />
+          <p class="t2" style="margin-top:6px; text-align:left; padding:0 2px;">Used only when a photo's filename doesn't match anything in the CSV.</p>
+        </div>
+
+        <div class="section">
+          <p class="section-label">Unit Images</p>
+          <div class="dropzone" id="uiDropzone">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A5 5 0 0 1 6 5.3a6 6 0 0 1 11.3-2A5.5 5.5 0 0 1 20 13.8"/><path d="M12 12v8"/><path d="m9 15 3-3 3 3"/></svg>
+            <p class="t1">Upload Unit Images</p>
+            <p class="t2">JPG, PNG or WEBP</p>
+          </div>
+          <input type="file" id="uiFileInput" accept="image/*" multiple style="display:none" />
+        </div>
+
+        <div class="section">
+          <p class="section-label">Export Size</p>
+          <div class="ratio-badge">
+            <span>Fit &amp; Export</span>
+            <span class="ratio-chip" id="uiRatioChip">900×900 · 1:1 · 300ppi</span>
+          </div>
+        </div>
+
+        <div class="section">
+          <p class="section-label">Resolution</p>
+          <div class="fmt-row">
+            <label class="fmt-pill on" id="uiRes300Pill">
+              <input type="radio" name="uiResolution" id="uiRes300" checked /> 300 PPI
+            </label>
+            <label class="fmt-pill" id="uiRes1200Pill">
+              <input type="radio" name="uiResolution" id="uiRes1200" /> 1200 PPI
+            </label>
+          </div>
+        </div>
+
+        <div class="section">
+          <p class="section-label">Export Format</p>
+          <div class="fmt-row">
+            <label class="fmt-pill on" id="uiJpgPill">
+              <input type="checkbox" id="uiFmtJpg" checked disabled /> JPG
+            </label>
+          </div>
+        </div>
+
+        <div class="section" id="uiActionsSection" style="display:none;">
+          <p class="section-label">Controls &amp; Actions</p>
+          <div class="btn-row">
+            <button class="btn" id="uiRestartBtn" title="Select all">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+              Restart
+            </button>
+            <button class="btn btn-danger" id="uiClearBtn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+              Clear
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- /unitSidebar -->
+
+      <div id="floorplanSidebar" style="display:none;">
+        <div class="section">
+          <p class="section-label">Floor Plans</p>
+          <div class="dropzone" id="fpDropzone">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A5 5 0 0 1 6 5.3a6 6 0 0 1 11.3-2A5.5 5.5 0 0 1 20 13.8"/><path d="M12 12v8"/><path d="m9 15 3-3 3 3"/></svg>
+            <p class="t1">Upload Floor Plans</p>
+            <p class="t2">PDF, JPG, PNG or WEBP</p>
+          </div>
+          <input type="file" id="fpFileInput" accept=".pdf,.jpg,.jpeg,.png,.webp,image/*,application/pdf" multiple style="display:none" />
+        </div>
+
+        <div class="section">
+          <p class="section-label">Export Size</p>
+          <div class="ratio-badge">
+            <span>Crop &amp; Export</span>
+            <span class="ratio-chip" id="fpRatioChip">900×900 · 1:1 · 300ppi</span>
+          </div>
+        </div>
+
+        <div class="section">
+          <p class="section-label">Resolution</p>
+          <div class="fmt-row">
+            <label class="fmt-pill on" id="fpRes300Pill">
+              <input type="radio" name="fpResolution" id="fpRes300" checked /> 300 PPI
+            </label>
+            <label class="fmt-pill" id="fpRes1200Pill">
+              <input type="radio" name="fpResolution" id="fpRes1200" /> 1200 PPI
+            </label>
+          </div>
+        </div>
+
+        <div class="section">
+          <p class="section-label">Export Format</p>
+          <div class="fmt-row">
+            <label class="fmt-pill on" id="fpJpgPill">
+              <input type="checkbox" id="fpFmtJpg" checked disabled /> JPG
+            </label>
+          </div>
+        </div>
+
+        <div class="section" id="fpActionsSection" style="display:none;">
+          <p class="section-label">Controls &amp; Actions</p>
+          <div class="btn-row">
+            <button class="btn" id="fpRestartBtn" title="Select all">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+              Restart
+            </button>
+            <button class="btn btn-danger" id="fpClearBtn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+              Clear
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- /floorplanSidebar -->
+    </div>
+
+    <div class="footer" id="amenityFooter">
+      <p class="selected-count"><b id="selCount">0</b> of <b id="totalCount">0</b> Selected</p>
+      <button class="btn btn-primary" id="exportBtn" disabled>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span id="exportLabel">Export Checked (0)</span>
+      </button>
+    </div>
+    <div class="footer" id="unitFooter" style="display:none;">
+      <p class="selected-count"><b id="uiSelCount">0</b> of <b id="uiTotalCount">0</b> Selected</p>
+      <button class="btn btn-primary" id="uiExportBtn" disabled>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span id="uiExportLabel">Export Checked (0)</span>
+      </button>
+    </div>
+    <div class="footer" id="floorplanFooter" style="display:none;">
+      <p class="selected-count"><b id="fpSelCount">0</b> of <b id="fpTotalCount">0</b> Selected</p>
+      <button class="btn btn-primary" id="fpExportBtn" disabled>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span id="fpExportLabel">Export Checked (0)</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div id="amenityMain">
+      <div class="empty" id="emptyState">
+        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+        <p class="t1">No amenity photos yet</p>
+        <p class="t2">Drag and drop images anywhere, or use the Upload Amenity Photos panel to add them. Each photo will be cropped to 16:9 and labeled from its filename.</p>
+      </div>
+      <div class="grid" id="grid" style="display:none;"></div>
+    </div>
+
+    <div id="unitMain" style="display:none;">
+      <div class="empty" id="uiEmptyState">
+        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+        <p class="t1">No unit images yet</p>
+        <p class="t2">Set the floor plan name, then upload kitchen, bedroom, bathroom, and other unit photos. No cropping — each photo is scaled to fit within a 1:1 square, centered with even white space top and bottom.</p>
+      </div>
+      <div class="grid" id="uiGrid" style="display:none;"></div>
+    </div>
+
+    <div id="floorplanMain" style="display:none;">
+      <div class="empty" id="fpEmptyState">
+        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M3 9h18"/></svg>
+        <p class="t1">No floor plans yet</p>
+        <p class="t2">Upload PDF, JPG, PNG, or WEBP floor plan sheets. Each one starts as the full, untouched page — nothing is cropped automatically. Use Adjust Crop to fine-tune what's kept, in any shape; it's centered onto a 1:1 canvas on export.</p>
+      </div>
+      <div class="grid" id="fpGrid" style="display:none;"></div>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay hidden" id="cropModalOverlay">
+  <div class="crop-modal">
+    <h3>Adjust crop — <span id="cropModalLabel"></span></h3>
+    <p class="hint">Starts as the full page · drag to reposition · drag the corner handle to resize (any shape) · crop out logos or letterhead if you want — it's centered onto a 1:1 canvas on save</p>
+    <div class="crop-toolbar">
+      <button type="button" class="crop-modebtn active" data-mode="crop">Crop</button>
+      <button type="button" class="crop-modebtn" data-mode="sample">Sample Blank Area</button>
+      <button type="button" class="crop-modebtn" id="stampModeBtn" data-mode="stamp" disabled>Stamp</button>
+      <div class="crop-toolbar-spacer"></div>
+      <label class="brush-label">Brush
+        <input type="range" id="brushSize" min="15" max="250" value="50" />
+        <span id="brushSizeLabel">50px</span>
+      </label>
+      <button type="button" class="btn" id="undoStampBtn" disabled>Undo Stamp</button>
+      <button type="button" class="btn" id="resetStampsBtn">Reset Stamps</button>
+    </div>
+    <div class="crop-stage" id="cropStage">
+      <canvas id="cropStageCanvas"></canvas>
+      <div class="crop-box" id="cropBox">
+        <div class="crop-handle" id="cropHandle"></div>
+      </div>
+      <div class="sample-marker" id="sampleMarker"></div>
+      <div class="brush-cursor" id="brushCursor"></div>
+    </div>
+    <div class="crop-actions">
+      <button class="btn" id="cropResetBtn">Reset to Auto-Trim</button>
+      <button class="btn" id="cropCancelBtn">Cancel</button>
+      <button class="btn btn-primary" id="cropSaveBtn" style="width:auto;">Save Crop</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="pageSelectOverlay">
+  <div class="crop-modal" style="width:380px;">
+    <h3>Select Pages — <span id="pageSelectFileName"></span></h3>
+    <p class="hint">This PDF has multiple pages. Choose which ones to import as floor plans.</p>
+    <label class="fmt-pill page-select-row page-select-all">
+      <input type="checkbox" id="pageSelectAll" /> All Pages
+    </label>
+    <div id="pageSelectList" class="page-select-list"></div>
+    <div class="crop-actions">
+      <button class="btn" id="pageSelectCancelBtn">Cancel</button>
+      <button class="btn btn-primary" id="pageSelectConfirmBtn" style="width:auto;">Add Selected Pages</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="photoPreviewOverlay">
+  <div class="crop-modal" style="width:auto;">
+    <h3>Preview — <span id="photoPreviewLabel"></span></h3>
+    <p class="hint">This is exactly how the photo will be exported — 1920×1080, 300ppi JPG.</p>
+    <div class="preview-stage">
+      <canvas id="photoPreviewCanvas"></canvas>
+    </div>
+    <div class="vpos-control" id="photoPreviewVposControl" style="display:none;">
+      <span>Top</span>
+      <input type="range" id="photoPreviewVpos" min="0" max="100" />
+      <span>Bottom</span>
+    </div>
+    <div class="crop-actions">
+      <button class="btn btn-primary" id="photoPreviewCloseBtn" style="width:auto;">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const state = { photos: [] }; // {id, file, url, label, checked, w, h}
+  let dragCounter = 0;
+  let activeTab = 'amenities';
+
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const grid = document.getElementById('grid');
+  const emptyState = document.getElementById('emptyState');
+  const actionsSection = document.getElementById('actionsSection');
+  const selCount = document.getElementById('selCount');
+  const totalCount = document.getElementById('totalCount');
+  const exportBtn = document.getElementById('exportBtn');
+  const exportLabel = document.getElementById('exportLabel');
+  const fmtJpg = document.getElementById('fmtJpg');
+  const jpgPill = document.getElementById('jpgPill');
+  const toast = document.getElementById('toast');
+
+  let toastTimer = null;
+  function showToast(msg){
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=> toast.classList.remove('show'), 3200);
+  }
+
+  function deriveLabel(filename){
+    // Preserve the original filename exactly (underscores, dashes, case, everything) so the
+    // exported file matches what was uploaded by default. Only the extension is stripped, since
+    // the export adds its own (.png/.jpg). The label stays editable in the UI if a different
+    // name is wanted.
+    return filename.replace(/\.[^/.]+$/, '');
+  }
+
+  function sanitize(str){
+    return (str || '').trim().replace(/[\/\\?%*:|"<>]/g, '_').replace(/\.+$/g, '').trim();
+  }
+
+  function uid(){ return 'p_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
+
+  function addFiles(fileList){
+    const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+    if (files.length === 0) return;
+    files.forEach(file => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      const id = uid();
+      const item = { id, file, url, label: deriveLabel(file.name), checked: true, w: 0, h: 0, vPos: 1 };
+      state.photos.push(item);
+      img.onload = () => { item.w = img.naturalWidth; item.h = img.naturalHeight; render(); };
+      img.src = url;
+    });
+    render();
+  }
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => { addFiles(e.target.files); fileInput.value = ''; });
+
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault(); dropzone.classList.remove('drag');
+    if (e.dataTransfer.files) addFiles(e.dataTransfer.files);
+  });
+
+  // whole-window drag & drop
+  window.addEventListener('dragover', e => e.preventDefault());
+  window.addEventListener('drop', e => {
+    e.preventDefault();
+    if (e.target.closest('.dropzone')) return;
+    if (!e.dataTransfer.files) return;
+    if (activeTab === 'amenities') addFiles(e.dataTransfer.files);
+    else if (activeTab === 'unitimages') uiAddFiles(e.dataTransfer.files);
+    else fpAddFiles(e.dataTransfer.files);
+  });
+
+  function toggleChecked(id){
+    const item = state.photos.find(p => p.id === id);
+    if (item) { item.checked = !item.checked; render(); }
+  }
+  function updateLabel(id, val){
+    const item = state.photos.find(p => p.id === id);
+    if (item) item.label = val;
+  }
+  function updateVPos(id, val){
+    const item = state.photos.find(p => p.id === id);
+    if (!item) return;
+    item.vPos = Math.max(0, Math.min(100, parseInt(val, 10))) / 100;
+    // Update the live preview directly instead of a full re-render, so dragging the slider stays smooth.
+    const card = grid.querySelector(`.card[data-id="${id}"]`);
+    const img = card && card.querySelector('.thumb-wrap img');
+    if (img) img.style.objectPosition = `center ${Math.round(item.vPos * 100)}%`;
+  }
+  function removeItem(id){
+    const idx = state.photos.findIndex(p => p.id === id);
+    if (idx >= 0) {
+      URL.revokeObjectURL(state.photos[idx].url);
+      state.photos.splice(idx, 1);
+      render();
+    }
+  }
+
+  document.getElementById('restartBtn').addEventListener('click', () => {
+    state.photos.forEach(p => { p.checked = true; });
+    render();
+    showToast('All photos re-selected');
+  });
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    if (state.photos.length && !confirm('Remove all photos from the queue?')) return;
+    state.photos.forEach(p => URL.revokeObjectURL(p.url));
+    state.photos = [];
+    render();
+  });
+
+  function render(){
+    const total = state.photos.length;
+    const checkedCount = state.photos.filter(p => p.checked).length;
+    totalCount.textContent = total;
+    selCount.textContent = checkedCount;
+    exportLabel.textContent = `Export Checked (${checkedCount})`;
+    exportBtn.disabled = checkedCount === 0;
+    actionsSection.style.display = total > 0 ? 'block' : 'none';
+
+    if (total === 0){
+      emptyState.style.display = 'flex';
+      grid.style.display = 'none';
+      grid.innerHTML = '';
+      return;
+    }
+    emptyState.style.display = 'none';
+    grid.style.display = 'grid';
+
+    grid.innerHTML = state.photos.map(p => {
+      const vPos = p.vPos != null ? p.vPos : 1;
+      const isPortrait = p.w && p.h && p.h > p.w; // taller than wide — fit in full, don't crop away most of it
+      const needsVCrop = p.w && p.h && !isPortrait && (p.w / p.h <= 16 / 9); // landscape but narrower than 16:9
+      const imgStyle = isPortrait
+        ? 'object-fit:contain;'
+        : `object-position:center ${Math.round(vPos * 100)}%;`;
+      return `
+      <div class="card ${p.checked ? '' : 'unchecked'}" data-id="${p.id}">
+        <div class="thumb-wrap" style="${isPortrait ? 'background:#fff;' : ''}">
+          <img src="${p.url}" style="${imgStyle} cursor:pointer;" alt="${escapeHtml(p.label)}" data-action="preview" data-id="${p.id}" />
+          <label class="thumb-check">
+            <input type="checkbox" data-action="check" data-id="${p.id}" ${p.checked ? 'checked' : ''} />
+          </label>
+          <div class="thumb-remove" data-action="remove" data-id="${p.id}" title="Remove">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </div>
+        </div>
+        <div class="card-body">
+          <input type="text" data-action="label" data-id="${p.id}" value="${escapeHtml(p.label)}" placeholder="Amenity label" />
+          ${needsVCrop ? `
+          <div class="vpos-control">
+            <span>Top</span>
+            <input type="range" data-action="vpos" data-id="${p.id}" min="0" max="100" value="${Math.round(vPos * 100)}" />
+            <span>Bottom</span>
+          </div>` : ''}
+          <div class="card-meta">
+            <span>${p.w && p.h ? '1920x1080' : 'Loading…'}</span>
+            <span class="badge">${isPortrait ? 'Fit' : '16:9'}</span>
+          </div>
+          <button class="btn crop-btn" data-action="preview" data-id="${p.id}" ${p.w && p.h ? '' : 'disabled'}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+            Preview
+          </button>
+        </div>
+      </div>
+    `;
+    }).join('');
+
+    grid.querySelectorAll('[data-action="check"]').forEach(el => {
+      el.addEventListener('change', () => toggleChecked(el.dataset.id));
+    });
+    grid.querySelectorAll('[data-action="remove"]').forEach(el => {
+      el.addEventListener('click', () => removeItem(el.dataset.id));
+    });
+    grid.querySelectorAll('[data-action="label"]').forEach(el => {
+      el.addEventListener('input', () => updateLabel(el.dataset.id, el.value));
+    });
+    grid.querySelectorAll('[data-action="vpos"]').forEach(el => {
+      el.addEventListener('input', () => updateVPos(el.dataset.id, el.value));
+    });
+    grid.querySelectorAll('[data-action="preview"]').forEach(el => {
+      el.addEventListener('click', () => openPhotoPreview(el.dataset.id));
+    });
+  }
+
+  function escapeHtml(str){
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  // ---- Export: crop to 16:9 cover-fit @ 1920x1080, zip, download ----
+  function loadImage(src){
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = src;
+    });
+  }
+
+  function cropRectFor16x9(w, h, vPos = 1){
+    const target = 16/9;
+    let sx, sy, sw, sh;
+    if (w / h > target){
+      sh = h; sw = h * target; sx = (w - sw) / 2; sy = 0;
+    } else {
+      sw = w; sh = w / target; sx = 0; sy = (h - sh) * vPos; // vPos: 0 = top, 1 = bottom, adjustable
+    }
+    return { sx, sy, sw, sh };
+  }
+
+  // ---- Photo preview modal: verify the exact crop/fit before exporting ----
+  const photoPreviewOverlay = document.getElementById('photoPreviewOverlay');
+  const photoPreviewLabel = document.getElementById('photoPreviewLabel');
+  const photoPreviewCanvas = document.getElementById('photoPreviewCanvas');
+  const photoPreviewVposControl = document.getElementById('photoPreviewVposControl');
+  const photoPreviewVpos = document.getElementById('photoPreviewVpos');
+  const photoPreviewCloseBtn = document.getElementById('photoPreviewCloseBtn');
+
+  let previewTarget = null;
+
+  async function openPhotoPreview(id){
+    const item = state.photos.find(p => p.id === id);
+    if (!item || !item.w || !item.h) return;
+    previewTarget = item;
+    photoPreviewLabel.textContent = item.label || 'Untitled';
+
+    const isPortrait = item.h > item.w;
+    const needsVCrop = !isPortrait && (item.w / item.h <= 16 / 9);
+    photoPreviewVposControl.style.display = needsVCrop ? 'flex' : 'none';
+    photoPreviewVpos.value = Math.round((item.vPos != null ? item.vPos : 1) * 100);
+
+    photoPreviewOverlay.classList.remove('hidden');
+    await renderPhotoPreview();
+  }
+
+  async function renderPhotoPreview(){
+    if (!previewTarget) return;
+    const img = await loadImage(previewTarget.url);
+    const maxW = Math.min(window.innerWidth * 0.82, 960);
+    const dispW = Math.round(maxW), dispH = Math.round(maxW * 9 / 16);
+    photoPreviewCanvas.width = dispW;
+    photoPreviewCanvas.height = dispH;
+    const ctx = photoPreviewCanvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, dispW, dispH);
+
+    // Same logic as the real export: portrait photos are fit (full height, pillarboxed),
+    // everything else is cover-cropped to 16:9 at the current vertical position.
+    const isPortrait = img.naturalHeight > img.naturalWidth;
+    if (isPortrait){
+      const dh = dispH;
+      const dw = img.naturalWidth * (dispH / img.naturalHeight);
+      const dx = (dispW - dw) / 2;
+      ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, dx, 0, dw, dh);
+    } else {
+      const vPos = previewTarget.vPos != null ? previewTarget.vPos : 1;
+      const { sx, sy, sw, sh } = cropRectFor16x9(img.naturalWidth, img.naturalHeight, vPos);
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, dispW, dispH);
+    }
+  }
+
+  photoPreviewVpos.addEventListener('input', () => {
+    if (!previewTarget) return;
+    previewTarget.vPos = parseInt(photoPreviewVpos.value, 10) / 100;
+    renderPhotoPreview();
+    // Keep the card behind the modal in sync, so closing the preview shows the same result.
+    const card = grid.querySelector(`.card[data-id="${previewTarget.id}"]`);
+    if (card){
+      const cardSlider = card.querySelector('[data-action="vpos"]');
+      if (cardSlider) cardSlider.value = photoPreviewVpos.value;
+      const cardImg = card.querySelector('.thumb-wrap img');
+      if (cardImg) cardImg.style.objectPosition = `center ${photoPreviewVpos.value}%`;
+    }
+  });
+
+  function closePhotoPreview(){
+    photoPreviewOverlay.classList.add('hidden');
+    previewTarget = null;
+  }
+  photoPreviewCloseBtn.addEventListener('click', closePhotoPreview);
+  photoPreviewOverlay.addEventListener('click', e => {
+    if (e.target === photoPreviewOverlay) closePhotoPreview();
+  });
+
+  const EXPORT_DPI = 300;
+
+  // Browsers' built-in canvas resize (even with imageSmoothingQuality:'high') is known to be
+  // noticeably lower quality than proper photo-editing tools for detailed/textured source images
+  // — this is a well-documented Canvas 2D limitation, not something a quality hint can fix. pica
+  // uses real Lanczos resampling instead, matching the kind of resize professional tools do.
+  // Only used at export time (thumbnails keep the fast path — the quality difference there
+  // matters much less at 320px, and pica is meaningfully slower than a plain drawImage).
+  let _picaInstance = null;
+  function getPica(){
+    if (!_picaInstance) _picaInstance = window.pica();
+    return _picaInstance;
+  }
+
+  async function hqDrawImage(destCtx, sourceCanvas, sx, sy, sw, sh, dx, dy, dw, dh){
+    sw = Math.max(1, Math.round(sw)); sh = Math.max(1, Math.round(sh));
+    dw = Math.max(1, Math.round(dw)); dh = Math.max(1, Math.round(dh));
+
+    // Extract the exact crop region losslessly (no scaling here).
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = sw; cropCanvas.height = sh;
+    cropCanvas.getContext('2d').drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    // High-quality Lanczos resize to the exact target content size.
+    const resizedCanvas = document.createElement('canvas');
+    resizedCanvas.width = dw; resizedCanvas.height = dh;
+    try {
+      await getPica().resize(cropCanvas, resizedCanvas, { alpha: true });
+    } catch (err){
+      console.error('pica resize failed, falling back to canvas resize:', err);
+      const fctx = resizedCanvas.getContext('2d');
+      fctx.imageSmoothingEnabled = true; fctx.imageSmoothingQuality = 'high';
+      fctx.drawImage(cropCanvas, 0, 0, sw, sh, 0, 0, dw, dh);
+    }
+
+    // Place the already-correctly-sized result — this final step is 1:1, no further scaling.
+    destCtx.drawImage(resizedCanvas, dx, dy);
+  }
+
+  // ---- Patch the JFIF APP0 density fields in a JPEG blob ----
+  async function embedJpegDpi(blob, dpi){
+    const buf = new Uint8Array(await blob.arrayBuffer());
+    // SOI (0xFFD8) then APP0 (0xFFE0) "JFIF\0" segment is standard on canvas-encoded JPEGs
+    if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF && buf[3] === 0xE0){
+      const isJfif = buf[6] === 0x4A && buf[7] === 0x46 && buf[8] === 0x49 && buf[9] === 0x46 && buf[10] === 0x00;
+      if (isJfif){
+        buf[13] = 1; // units: 1 = dots per inch
+        buf[14] = (dpi >> 8) & 0xFF; buf[15] = dpi & 0xFF; // Xdensity
+        buf[16] = (dpi >> 8) & 0xFF; buf[17] = dpi & 0xFF; // Ydensity
+      }
+    }
+    return new Blob([buf], { type: 'image/jpeg' });
+  }
+
+  exportBtn.addEventListener('click', async () => {
+    const checkedItems = state.photos.filter(p => p.checked);
+    if (checkedItems.length === 0) return;
+
+    exportBtn.disabled = true;
+    const originalLabel = exportLabel.textContent;
+    exportLabel.textContent = 'Exporting…';
+
+    try{
+      const zip = new JSZip();
+      const usedNames = new Set();
+      let count = 0;
+
+      for (const item of checkedItems){
+        const img = await loadImage(item.url);
+        const naturalW = img.naturalWidth, naturalH = img.naturalHeight;
+        const isPortrait = naturalH > naturalW;
+        const outW = 1920, outH = 1080;
+        const canvas = document.createElement('canvas');
+        canvas.width = outW; canvas.height = outH;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+
+        let baseName = sanitize(item.label) || `amenity_${count + 1}`;
+        let finalName = baseName, dupe = 1;
+        while (usedNames.has(finalName.toLowerCase())){
+          dupe++; finalName = `${baseName}_${dupe}`;
+        }
+        usedNames.add(finalName.toLowerCase());
+
+        async function drawFrame(){
+          if (isPortrait){
+            // Vertical photo: fit to full height so top and bottom touch the frame edges exactly,
+            // centered horizontally — the whole image is kept, not aggressively cropped away.
+            const dh = outH;
+            const dw = naturalW * (outH / naturalH);
+            const dx = (outW - dw) / 2;
+            await hqDrawImage(ctx, img, 0, 0, naturalW, naturalH, dx, 0, dw, dh);
+          } else {
+            const { sx, sy, sw, sh } = cropRectFor16x9(naturalW, naturalH, item.vPos != null ? item.vPos : 1);
+            await hqDrawImage(ctx, img, sx, sy, sw, sh, 0, 0, outW, outH);
+          }
+        }
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, outW, outH);
+        await drawFrame();
+        let blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.95));
+        if (blob) { blob = await embedJpegDpi(blob, EXPORT_DPI); zip.file(`${finalName}.jpg`, blob); }
+        count++;
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const zipName = 'Amenity Images.zip';
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url; a.download = zipName; a.click();
+      URL.revokeObjectURL(url);
+
+      showToast(`Exported ${count} photo${count === 1 ? '' : 's'} to "${zipName}"`);
+    } catch(err){
+      console.error(err);
+      showToast(`Export failed: ${err.message || 'unknown error'}`);
+    } finally {
+      exportLabel.textContent = originalLabel;
+      render();
+    }
+  });
+
+  // ================= UNIT IMAGES =================
+  // Priority order for unit images, exactly as specified: Interior (Living Room, Kitchen,
+  // Bedroom, Bathroom, Closet & Other), then Exterior, then View Image, then Other. This order
+  // also drives which two image types get used as "Primary"/"Secondary" across a whole property.
+  const ROOM_TYPES = [
+    { value: 'living_room', label: 'Living Room', suffix: 'LivingRoom' },
+    { value: 'kitchen', label: 'Kitchen', suffix: 'Kitchen' },
+    { value: 'bedroom', label: 'Bedroom', suffix: 'Bedroom' },
+    { value: 'bathroom', label: 'Bathroom', suffix: 'Bathroom' },
+    { value: 'closet_other', label: 'Closet & Other', suffix: 'ClosetOther' },
+    { value: 'exterior', label: 'Exterior', suffix: 'Exterior' },
+    { value: 'view_image', label: 'View Image', suffix: 'ViewImage' },
+    { value: 'other', label: 'Other', suffix: 'Other' }
+  ];
+  function roomSuffix(value){
+    const rt = ROOM_TYPES.find(r => r.value === value);
+    return rt ? rt.suffix : 'Other';
+  }
+
+  // Image naming must avoid spaces, periods, commas, and dashes entirely (not just escape them) —
+  // this applies to both the exported file name and whatever gets written into the config CSV.
+  function uiCleanName(str){
+    return (str || '').replace(/[.,\-\s]+/g, '');
+  }
+
+  const uiState = { items: [] }; // {id,file,url,label,checked,w,h,roomType}
+
+  const uiDropzone = document.getElementById('uiDropzone');
+  const uiFileInput = document.getElementById('uiFileInput');
+  const uiGrid = document.getElementById('uiGrid');
+  const uiEmptyState = document.getElementById('uiEmptyState');
+  const uiActionsSection = document.getElementById('uiActionsSection');
+  const uiSelCount = document.getElementById('uiSelCount');
+  const uiTotalCount = document.getElementById('uiTotalCount');
+  const uiExportBtn = document.getElementById('uiExportBtn');
+  const uiExportLabel = document.getElementById('uiExportLabel');
+  const uiFloorPlanName = document.getElementById('uiFloorPlanName');
+  const uiRes300 = document.getElementById('uiRes300');
+  const uiRes1200 = document.getElementById('uiRes1200');
+  const uiRes300Pill = document.getElementById('uiRes300Pill');
+  const uiRes1200Pill = document.getElementById('uiRes1200Pill');
+  const uiRatioChip = document.getElementById('uiRatioChip');
+
+  const UNIT_OUT_SIZE = 900; // fixed regardless of PPI selection, matching floor plans
+  let uiExportPPI = 300;
+
+  function uiSyncResPills(){
+    uiRes300Pill.classList.toggle('on', uiRes300.checked);
+    uiRes1200Pill.classList.toggle('on', uiRes1200.checked);
+    uiExportPPI = uiRes1200.checked ? 1200 : 300;
+    uiRatioChip.textContent = `${UNIT_OUT_SIZE}×${UNIT_OUT_SIZE} · 1:1 · ${uiExportPPI}ppi`;
+    uiRender();
+  }
+  uiRes300.addEventListener('change', uiSyncResPills);
+  uiRes1200.addEventListener('change', uiSyncResPills);
+
+  // ---- Unit data CSV: maps a unit number to its floor plan name, so a filename that only
+  // contains the unit number (e.g. "1101") can still be named after the correct floor plan.
+  // The raw parsed rows are kept so we can later write the Primary/Secondary columns back into
+  // a full copy of this same CSV. ----
+  const uiCsvBtn = document.getElementById('uiCsvBtn');
+  const uiCsvInput = document.getElementById('uiCsvInput');
+  const uiCsvStatus = document.getElementById('uiCsvStatus');
+  const uiPropertyId = document.getElementById('uiPropertyId');
+  const uiConfigCsvBtn = document.getElementById('uiConfigCsvBtn');
+
+  let csvUnitToPlan = new Map();   // unit number token (lowercase) -> floor plan name
+  let csvPlanNames = [];           // distinct floor plan names, longest-first for matching
+  let csvRawRows = [];             // original parsed rows, untouched, for regenerating the file
+  let csvRawFields = [];           // original column order
+  let csvUnitColName = null;       // which original column holds the unit number
+  let csvPlanColName = null;       // which original column holds the floor plan value
+
+  function csvExtractPlanName(raw){
+    if (raw == null) return '';
+    const str = String(raw).trim();
+    if (str.startsWith('{')){
+      try {
+        const parsed = JSON.parse(str);
+        if (parsed && parsed.name) return String(parsed.name).trim();
+      } catch (e) { /* not JSON, fall through and use raw string */ }
+    }
+    return str;
+  }
+
+  function csvFindColumn(fields, mustInclude){
+    const lower = fields.map(f => f.toLowerCase());
+    for (let i = 0; i < lower.length; i++){
+      if (mustInclude.every(part => lower[i].includes(part))) return fields[i];
+    }
+    return null;
+  }
+
+  uiCsvBtn.addEventListener('click', () => uiCsvInput.click());
+  uiCsvInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Try to pull a property ID out of the CSV's own filename (e.g. "...-units-1788467892-...csv"),
+    // since that's commonly how these exports are named. Editable afterward either way.
+    const idMatch = file.name.match(/(\d{5,})/);
+    if (idMatch && !uiPropertyId.value) uiPropertyId.value = idMatch[1];
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: results => {
+        const fields = results.meta.fields || [];
+        const unitCol = csvFindColumn(fields, ['unit', 'number']) || csvFindColumn(fields, ['unit', '#']);
+        const planCol = csvFindColumn(fields, ['floor', 'plan']) || csvFindColumn(fields, ['plan']);
+
+        if (!unitCol && !planCol){
+          uiCsvStatus.textContent = 'Could not find a Unit Number or Floor Plan column in that CSV.';
+          uiCsvInput.value = '';
+          return;
+        }
+
+        csvRawRows = results.data;
+        csvRawFields = fields;
+        csvUnitColName = unitCol;
+        csvPlanColName = planCol;
+
+        csvUnitToPlan = new Map();
+        const planNameSet = new Set();
+        results.data.forEach(row => {
+          const unitRaw = unitCol ? row[unitCol] : null;
+          const planName = planCol ? csvExtractPlanName(row[planCol]) : '';
+          if (planName) planNameSet.add(planName);
+          if (unitRaw != null && String(unitRaw).trim() !== ''){
+            const unitKey = String(unitRaw).trim().toLowerCase();
+            csvUnitToPlan.set(unitKey, planName || String(unitRaw).trim());
+          }
+        });
+        csvPlanNames = Array.from(planNameSet).sort((a, b) => b.length - a.length);
+
+        uiCsvStatus.textContent = `Loaded ${csvUnitToPlan.size} unit${csvUnitToPlan.size === 1 ? '' : 's'}` +
+          (csvPlanNames.length ? `, ${csvPlanNames.length} floor plan${csvPlanNames.length === 1 ? '' : 's'}.` : '.');
+        uiConfigCsvBtn.disabled = csvRawRows.length === 0;
+
+        // Re-check any already-uploaded photos that didn't get a match yet.
+        let rematched = 0;
+        uiState.items.forEach(item => {
+          if (item.matchedFrom) return;
+          const match = uiMatchFilename(item.originalFileName);
+          if (match){
+            item.autoPrefix = match.prefix;
+            item.matchedFrom = match.matchedFrom;
+            item.matchedUnitKey = match.unitKey || null;
+            item.matchedPlanName = match.planName || null;
+            item.label = uiComputedName(item);
+            rematched++;
+          }
+        });
+        if (rematched > 0) showToast(`Matched ${rematched} existing photo${rematched === 1 ? '' : 's'} to the CSV`);
+        uiRender();
+        uiCsvInput.value = '';
+      },
+      error: err => {
+        uiCsvStatus.textContent = `Couldn't read that CSV: ${err.message || 'unknown error'}`;
+        uiCsvInput.value = '';
+      }
+    });
+  });
+
+  // Look for a unit number or floor plan name as a whole token inside the filename (not a loose
+  // substring match — "11" shouldn't match inside "1101"). Tokens are split on common separators.
+  // unitKey is only set for an actual unit-number match, since that's the only case we can tie
+  // back to one specific row in the CSV — a plan-name match could apply to many units.
+  // Unit-number matches are scoped to that one specific unit. Floor-plan-name matches are
+  // intentionally broader — the same photo should apply to every unit sharing that floor plan.
+  // Unit number always takes priority when both could apply, since it's the more specific signal.
+  // Plan-name comparison uses cleaned (no spaces/commas/etc) forms on both sides, since a real
+  // filename won't contain a plan name's exact punctuation/spacing (e.g. "2 Bedroom, 2 Bathroom"
+  // becomes "2Bedroom2Bathroom" in a filename).
+  function uiMatchFilename(filename){
+    const noExt = filename.replace(/\.[^/.]+$/, '');
+    const tokens = noExt.split(/[_\-\s.]+/).filter(Boolean);
+    const tokensLower = tokens.map(t => t.toLowerCase());
+
+    for (let i = 0; i < tokensLower.length; i++){
+      if (csvUnitToPlan.has(tokensLower[i])){
+        return { prefix: csvUnitToPlan.get(tokensLower[i]), matchedFrom: tokens[i], unitKey: tokensLower[i], planName: null };
+      }
+    }
+    const cleanedFull = uiCleanName(noExt).toLowerCase();
+    for (const planName of csvPlanNames){
+      const cleanedPlan = uiCleanName(planName).toLowerCase();
+      if (cleanedPlan && cleanedFull.includes(cleanedPlan)){
+        return { prefix: planName, matchedFrom: planName, unitKey: null, planName: planName };
+      }
+    }
+    return null;
+  }
+
+  function uiUid(){ return 'ui_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8); }
+
+  // ---- Determine which two image types to use as "Primary"/"Secondary" across the whole
+  // property, matching the specified priority: broad category first (Interior > Exterior >
+  // View Image > Other), with Interior's five subtypes only used to break ties *within*
+  // Interior. If Interior is the only category present, its top two present subtypes fill
+  // both slots (e.g. Living Room + Kitchen). Otherwise the top two present *categories* each
+  // contribute one representative image (e.g. Interior + Exterior), matching the examples
+  // given: interior-only uses two interior views; interior+exterior uses one of each. ----
+  const INTERIOR_SUBTYPES = ['living_room', 'kitchen', 'bedroom', 'bathroom', 'closet_other'];
+  const CATEGORY_ORDER = ['interior', 'exterior', 'view_image', 'other'];
+  function categoryOf(roomTypeValue){
+    return INTERIOR_SUBTYPES.includes(roomTypeValue) ? 'interior' : roomTypeValue;
+  }
+
+  function uiGetGlobalPrimarySecondaryTypes(matchedItems){
+    const presentTypes = new Set(matchedItems.map(p => p.roomType));
+    const presentCategories = new Set(Array.from(presentTypes).map(categoryOf));
+    const orderedCategories = CATEGORY_ORDER.filter(c => presentCategories.has(c));
+    if (orderedCategories.length === 0) return { primary: null, secondary: null };
+
+    function representativeType(category){
+      if (category === 'interior') return INTERIOR_SUBTYPES.find(t => presentTypes.has(t)) || null;
+      return presentTypes.has(category) ? category : null;
+    }
+
+    if (orderedCategories.length === 1 && orderedCategories[0] === 'interior'){
+      const presentInteriorSubtypes = INTERIOR_SUBTYPES.filter(t => presentTypes.has(t));
+      return { primary: presentInteriorSubtypes[0] || null, secondary: presentInteriorSubtypes[1] || null };
+    }
+
+    return {
+      primary: representativeType(orderedCategories[0]),
+      secondary: orderedCategories[1] ? representativeType(orderedCategories[1]) : null
+    };
+  }
+
+  uiConfigCsvBtn.addEventListener('click', () => {
+    if (csvRawRows.length === 0){
+      showToast('Upload the Unit Data CSV first.');
+      return;
+    }
+    const matchedItems = uiState.items.filter(p => p.matchedUnitKey || p.matchedPlanName);
+    if (matchedItems.length === 0){
+      showToast('No uploaded photos have matched a unit number or floor plan yet.');
+      return;
+    }
+
+    const { primary, secondary } = uiGetGlobalPrimarySecondaryTypes(matchedItems);
+    if (!primary){
+      showToast('Could not determine an image type to use.');
+      return;
+    }
+
+    // Two lookup scopes: a specific-unit match only fills that one row; a floor-plan match fills
+    // every row sharing that plan value. Unit-specific always wins if a row qualifies for both.
+    const unitImageMap = new Map();  // unitKey -> {primary, secondary}
+    const planImageMap = new Map();  // plan name (lowercase) -> {primary, secondary}
+
+    matchedItems.forEach(item => {
+      const cleanedName = uiCleanName(sanitize(item.label));
+      if (item.matchedUnitKey){
+        if (!unitImageMap.has(item.matchedUnitKey)) unitImageMap.set(item.matchedUnitKey, {});
+        const slot = unitImageMap.get(item.matchedUnitKey);
+        if (item.roomType === primary && !slot.primary) slot.primary = cleanedName;
+        if (secondary && item.roomType === secondary && !slot.secondary) slot.secondary = cleanedName;
+      } else if (item.matchedPlanName){
+        const key = item.matchedPlanName.toLowerCase();
+        if (!planImageMap.has(key)) planImageMap.set(key, {});
+        const slot = planImageMap.get(key);
+        if (item.roomType === primary && !slot.primary) slot.primary = cleanedName;
+        if (secondary && item.roomType === secondary && !slot.secondary) slot.secondary = cleanedName;
+      }
+    });
+
+    // Columns I and J (position 9/10) get renamed to Primary/Secondary; every other header stays
+    // exactly as it was. If the CSV has fewer than 10 columns, add them at the end instead.
+    let outFields = csvRawFields.slice();
+    let primaryField, secondaryField;
+    const hasIJ = outFields.length >= 10;
+    if (hasIJ){
+      primaryField = 'Primary'; secondaryField = 'Secondary';
+      outFields[8] = primaryField; outFields[9] = secondaryField;
+    } else {
+      primaryField = 'Primary'; secondaryField = 'Secondary';
+      outFields = outFields.concat([primaryField, secondaryField]);
+    }
+
+    const outRows = csvRawRows.map(row => {
+      const newRow = {};
+      csvRawFields.forEach((f, i) => {
+        if (hasIJ && (i === 8 || i === 9)) return; // original I/J content is discarded, not carried over
+        newRow[f] = row[f];
+      });
+      const unitRaw = csvUnitColName ? row[csvUnitColName] : null;
+      const unitKey = unitRaw != null ? String(unitRaw).trim().toLowerCase() : null;
+      const rowPlanName = csvPlanColName ? csvExtractPlanName(row[csvPlanColName]) : '';
+      const planKey = rowPlanName ? rowPlanName.toLowerCase() : null;
+
+      const unitSlot = unitKey ? unitImageMap.get(unitKey) : null;
+      const planSlot = planKey ? planImageMap.get(planKey) : null;
+
+      newRow[primaryField] = (unitSlot && unitSlot.primary) || (planSlot && planSlot.primary) || '';
+      newRow[secondaryField] = (unitSlot && unitSlot.secondary) || (planSlot && planSlot.secondary) || '';
+      return newRow;
+    });
+
+    const csvText = Papa.unparse({ fields: outFields, data: outRows });
+    const propId = uiCleanName(sanitize(uiPropertyId.value)) || 'Property';
+    const filename = `${propId}_config-unit-images.csv`;
+    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+
+    showToast(`Downloaded "${filename}"`);
+  });
+
+
+  function uiComputedName(item, roomTypeOverride){
+    const roomType = roomTypeOverride || item.roomType;
+    const rawPrefix = item.autoPrefix || uiFloorPlanName.value;
+    const prefix = uiCleanName(sanitize(rawPrefix)) || 'Unit';
+    return `${prefix}_${roomSuffix(roomType)}`;
+  }
+
+  function uiAddFiles(fileList){
+    const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+    if (files.length === 0) return;
+    files.forEach(file => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      const id = uiUid();
+      const roomType = 'living_room';
+      const match = uiMatchFilename(file.name);
+      const item = {
+        id, file, url, checked: true, w: 0, h: 0, roomType,
+        originalFileName: file.name,
+        autoPrefix: match ? match.prefix : null,
+        matchedFrom: match ? match.matchedFrom : null,
+        matchedUnitKey: match ? (match.unitKey || null) : null,
+        matchedPlanName: match ? (match.planName || null) : null
+      };
+      item.label = uiComputedName(item);
+      uiState.items.push(item);
+      img.onload = () => { item.w = img.naturalWidth; item.h = img.naturalHeight; uiRender(); };
+      img.src = url;
+    });
+    uiRender();
+  }
+
+  uiDropzone.addEventListener('click', () => uiFileInput.click());
+  uiFileInput.addEventListener('change', e => { uiAddFiles(e.target.files); uiFileInput.value = ''; });
+  uiDropzone.addEventListener('dragover', e => { e.preventDefault(); uiDropzone.classList.add('drag'); });
+  uiDropzone.addEventListener('dragleave', () => uiDropzone.classList.remove('drag'));
+  uiDropzone.addEventListener('drop', e => {
+    e.preventDefault(); uiDropzone.classList.remove('drag');
+    if (e.dataTransfer.files) uiAddFiles(e.dataTransfer.files);
+  });
+
+  function uiToggleChecked(id){
+    const item = uiState.items.find(p => p.id === id);
+    if (item) { item.checked = !item.checked; uiRender(); }
+  }
+  function uiUpdateLabel(id, val){
+    const item = uiState.items.find(p => p.id === id);
+    if (item) item.label = val;
+  }
+  function uiUpdateRoomType(id, val){
+    const item = uiState.items.find(p => p.id === id);
+    if (!item) return;
+    item.roomType = val;
+    item.label = uiComputedName(item); // regenerate the name from the current prefix + room type
+    uiRender();
+  }
+  function uiCopyOriginalName(id){
+    const item = uiState.items.find(p => p.id === id);
+    if (!item) return;
+    const text = item.originalFileName.replace(/\.[^/.]+$/, '');
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(
+        () => showToast('Copied — paste it into the name field to customize'),
+        () => showToast('Could not copy — select and copy the text manually')
+      );
+    }
+  }
+  function uiRemoveItem(id){
+    const idx = uiState.items.findIndex(p => p.id === id);
+    if (idx >= 0) {
+      URL.revokeObjectURL(uiState.items[idx].url);
+      uiState.items.splice(idx, 1);
+      uiRender();
+    }
+  }
+
+  document.getElementById('uiRestartBtn').addEventListener('click', () => {
+    uiState.items.forEach(p => { p.checked = true; });
+    uiRender();
+    showToast('All unit images re-selected');
+  });
+  document.getElementById('uiClearBtn').addEventListener('click', () => {
+    if (uiState.items.length && !confirm('Remove all unit images from the queue?')) return;
+    uiState.items.forEach(p => URL.revokeObjectURL(p.url));
+    uiState.items = [];
+    uiRender();
+  });
+
+  function uiRoomOptionsHtml(selected){
+    return ROOM_TYPES.map(rt => `<option value="${rt.value}" ${rt.value === selected ? 'selected' : ''}>${rt.label}</option>`).join('');
+  }
+
+  function uiRender(){
+    const total = uiState.items.length;
+    const checkedCount = uiState.items.filter(p => p.checked).length;
+    uiTotalCount.textContent = total;
+    uiSelCount.textContent = checkedCount;
+    uiExportLabel.textContent = `Export Checked (${checkedCount})`;
+    uiExportBtn.disabled = checkedCount === 0;
+    uiActionsSection.style.display = total > 0 ? 'block' : 'none';
+
+    if (total === 0){
+      uiEmptyState.style.display = 'flex';
+      uiGrid.style.display = 'none';
+      uiGrid.innerHTML = '';
+      return;
+    }
+    uiEmptyState.style.display = 'none';
+    uiGrid.style.display = 'grid';
+
+    uiGrid.innerHTML = uiState.items.map(p => `
+      <div class="card ${p.checked ? '' : 'unchecked'}" data-id="${p.id}">
+        <div class="thumb-wrap square" style="background:#fff;">
+          <img src="${p.url}" style="object-fit:contain;" alt="${escapeHtml(p.label)}" />
+          <label class="thumb-check">
+            <input type="checkbox" data-action="uicheck" data-id="${p.id}" ${p.checked ? 'checked' : ''} />
+          </label>
+          <div class="thumb-remove" data-action="uiremove" data-id="${p.id}" title="Remove">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="ui-original-name" title="Click to copy">
+            <span class="ui-original-name-text" data-action="uicopyname" data-id="${p.id}">${escapeHtml(p.originalFileName)}</span>
+            <svg data-action="uicopyname" data-id="${p.id}" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </div>
+          ${p.matchedUnitKey ? `<div class="ui-match-note">✓ Unit "${escapeHtml(p.matchedFrom)}" only</div>` : ''}
+          ${p.matchedPlanName ? `<div class="ui-match-note ui-match-note-broad">✓ All "${escapeHtml(p.matchedPlanName)}" units</div>` : ''}
+          <select data-action="uiroomtype" data-id="${p.id}">${uiRoomOptionsHtml(p.roomType)}</select>
+          <input type="text" data-action="uilabel" data-id="${p.id}" value="${escapeHtml(p.label)}" placeholder="File name" />
+          <div class="card-meta">
+            <span>${p.w && p.h ? `900x900 · ${uiExportPPI}ppi` : 'Loading…'}</span>
+            <span class="badge">1:1</span>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    uiGrid.querySelectorAll('[data-action="uicheck"]').forEach(el => el.addEventListener('change', () => uiToggleChecked(el.dataset.id)));
+    uiGrid.querySelectorAll('[data-action="uiremove"]').forEach(el => el.addEventListener('click', () => uiRemoveItem(el.dataset.id)));
+    uiGrid.querySelectorAll('[data-action="uilabel"]').forEach(el => el.addEventListener('input', () => uiUpdateLabel(el.dataset.id, el.value)));
+    uiGrid.querySelectorAll('[data-action="uiroomtype"]').forEach(el => el.addEventListener('change', () => uiUpdateRoomType(el.dataset.id, el.value)));
+    uiGrid.querySelectorAll('[data-action="uicopyname"]').forEach(el => el.addEventListener('click', () => uiCopyOriginalName(el.dataset.id)));
+  }
+
+  // ---- Unit image export: fit (no crop) into 1:1, centered, even white space, same settings as floor plans ----
+  uiExportBtn.addEventListener('click', async () => {
+    const checkedItems = uiState.items.filter(p => p.checked);
+    if (checkedItems.length === 0) return;
+
+    uiExportBtn.disabled = true;
+    const originalLabel = uiExportLabel.textContent;
+    uiExportLabel.textContent = 'Exporting…';
+
+    try {
+      const zip = new JSZip();
+      const usedNames = new Set();
+      let count = 0;
+
+      for (const item of checkedItems){
+        const img = await loadImage(item.url);
+        const box = { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight }; // no crop — the whole image
+        const outSize = UNIT_OUT_SIZE;
+        const canvas = document.createElement('canvas');
+        canvas.width = outSize; canvas.height = outSize;
+        const ctx = canvas.getContext('2d');
+
+        let baseName = sanitize(item.label) || `unit_${count + 1}`;
+        let finalName = baseName, dupe = 1;
+        while (usedNames.has(finalName.toLowerCase())){
+          dupe++; finalName = `${baseName}_${dupe}`;
+        }
+        usedNames.add(finalName.toLowerCase());
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, outSize, outSize);
+        await drawContainedHQ(ctx, img, box, outSize, 0); // no margin — touches the frame edge-to-edge on the fitting axis
+        let blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.95));
+        if (blob) { blob = await embedJpegDpi(blob, uiExportPPI); zip.file(`${finalName}.jpg`, blob); }
+        count++;
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const zipName = 'Unit Images.zip';
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url; a.download = zipName; a.click();
+      URL.revokeObjectURL(url);
+
+      showToast(`Exported ${count} unit image${count === 1 ? '' : 's'} to "${zipName}"`);
+    } catch (err){
+      console.error(err);
+      showToast(`Export failed: ${err.message || 'unknown error'}`);
+    } finally {
+      uiExportLabel.textContent = originalLabel;
+      uiRender();
+    }
+  });
+
+  // ================= FLOOR PLANS =================
+  const fpState = { items: [] }; // {id,file,label,checked,canvas,srcW,srcH,box:{x,y,size},thumbUrl,loading,error}
+
+  const fpDropzone = document.getElementById('fpDropzone');
+  const fpFileInput = document.getElementById('fpFileInput');
+  const fpGrid = document.getElementById('fpGrid');
+  const fpEmptyState = document.getElementById('fpEmptyState');
+  const fpActionsSection = document.getElementById('fpActionsSection');
+  const fpSelCount = document.getElementById('fpSelCount');
+  const fpTotalCount = document.getElementById('fpTotalCount');
+  const fpExportBtn = document.getElementById('fpExportBtn');
+  const fpExportLabel = document.getElementById('fpExportLabel');
+  const fpFmtJpg = document.getElementById('fpFmtJpg');
+  const fpJpgPill = document.getElementById('fpJpgPill');
+  const fpRes300 = document.getElementById('fpRes300');
+  const fpRes1200 = document.getElementById('fpRes1200');
+  const fpRes300Pill = document.getElementById('fpRes300Pill');
+  const fpRes1200Pill = document.getElementById('fpRes1200Pill');
+  const fpRatioChip = document.getElementById('fpRatioChip');
+
+  const FLOORPLAN_OUT_SIZE = 900; // pixel dimensions stay fixed regardless of PPI selection — PPI is a print-size metadata tag only, matching how Lightroom's export works
+  const FLOORPLAN_BASE_PPI = 300;
+  let fpExportPPI = FLOORPLAN_BASE_PPI;
+
+  function fpOutSizeFor(ppi){
+    return FLOORPLAN_OUT_SIZE;
+  }
+
+  function fpSyncResPills(){
+    fpRes300Pill.classList.toggle('on', fpRes300.checked);
+    fpRes1200Pill.classList.toggle('on', fpRes1200.checked);
+    fpExportPPI = fpRes1200.checked ? 1200 : 300;
+    fpRatioChip.textContent = `${FLOORPLAN_OUT_SIZE}×${FLOORPLAN_OUT_SIZE} · 1:1 · ${fpExportPPI}ppi`;
+  }
+  fpRes300.addEventListener('change', () => { fpSyncResPills(); fpRender(); });
+  fpRes1200.addEventListener('change', () => { fpSyncResPills(); fpRender(); });
+
+  function fpUid(){ return 'fp_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
+
+  async function waitForPdfJs(){
+    let tries = 0;
+    while (!window.pdfjsLib && tries < 200){ await new Promise(r => setTimeout(r, 50)); tries++; }
+    if (!window.pdfjsLib) throw new Error('PDF engine failed to load. Check your connection and try again.');
+    return window.pdfjsLib;
+  }
+
+  function luminance(r, g, b){ return 0.299 * r + 0.587 * g + 0.114 * b; }
+
+  // Scan a canvas region to find (a) the tight bounding box of non-background ("ink") content,
+  // and (b) the ink's center of mass. The bounding box alone isn't enough for irregular shapes —
+  // an L-shaped floor plan (patio jutting one way, a closet jutting another, dead space in the
+  // unused corner) can have a bounding box that's perfectly centered while the actual print looks
+  // visibly off-balance. Centering on the mass-weighted centroid instead — equivalent to stripping
+  // the background out and balancing whatever remains — fixes that.
+  function analyzeContent(canvas, ox, oy, w, h){
+    const ctx = canvas.getContext('2d');
+    const data = ctx.getImageData(ox, oy, w, h).data;
+    const threshold = 250;
+    const rowMin = Math.max(2, w * 0.002);
+    const colMin = Math.max(2, h * 0.002);
+
+    function isInk(i){ return data[i + 3] > 10 && luminance(data[i], data[i + 1], data[i + 2]) < threshold; }
+
+    function rowHasContent(y){
+      let count = 0;
+      const rowStart = y * w * 4;
+      for (let x = 0; x < w; x++){
+        if (isInk(rowStart + x * 4)){ count++; if (count > rowMin) return true; }
+      }
+      return false;
+    }
+    function colHasContent(x){
+      let count = 0;
+      for (let y = 0; y < h; y++){
+        if (isInk((y * w + x) * 4)){ count++; if (count > colMin) return true; }
+      }
+      return false;
+    }
+
+    let top = 0; while (top < h && !rowHasContent(top)) top++;
+    let bottom = h - 1; while (bottom > top && !rowHasContent(bottom)) bottom--;
+    let left = 0; while (left < w && !colHasContent(left)) left++;
+    let right = w - 1; while (right > left && !colHasContent(right)) right--;
+
+    // Mass-weighted centroid of all ink in the region (independent of the bbox scan above).
+    let sumX = 0, sumY = 0, count = 0;
+    for (let y = 0; y < h; y++){
+      const rowStart = y * w * 4;
+      for (let x = 0; x < w; x++){
+        if (isInk(rowStart + x * 4)){ sumX += x; sumY += y; count++; }
+      }
+    }
+    const centroidX = count > 0 ? ox + sumX / count : ox + w / 2;
+    const centroidY = count > 0 ? oy + sumY / count : oy + h / 2;
+
+    if (top >= bottom || left >= right){
+      return { rect: { left: ox, top: oy, right: ox + w - 1, bottom: oy + h - 1 }, centroidX, centroidY };
+    }
+
+    const padX = (right - left) * 0.03, padY = (bottom - top) * 0.03;
+    left = Math.max(0, left - padX); right = Math.min(w - 1, right + padX);
+    top = Math.max(0, top - padY); bottom = Math.min(h - 1, bottom + padY);
+    return { rect: { left: ox + left, top: oy + top, right: ox + right, bottom: oy + bottom }, centroidX, centroidY };
+  }
+
+  // Back-compat wrapper used by the "Reset to Auto-Trim" button (bbox only, no centroid needed there).
+  function autoTrimRect(canvas, ox, oy, w, h){
+    return analyzeContent(canvas, ox, oy, w, h).rect;
+  }
+
+  function boxFromRect(rect){
+    return { x: rect.left, y: rect.top, w: rect.right - rect.left, h: rect.bottom - rect.top };
+  }
+
+  // A PDF page rendering with almost no ink at all despite having a real bounding box of content
+  // that spans most of the page is a strong signal that an embedded image failed to decode (a
+  // known, long-standing category of pdf.js bugs with certain compression formats — CCITT fax
+  // and JBIG2 in particular). This can't fix the decode itself, but it surfaces the problem
+  // immediately instead of leaving someone to discover a blank floor plan after export.
+  function detectSparseRender(canvas){
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const sampleW = Math.min(w, 400), sampleH = Math.min(h, 520);
+    // sample at reduced resolution for speed — this only needs to catch "almost nothing rendered"
+    const off = document.createElement('canvas');
+    off.width = sampleW; off.height = sampleH;
+    const octx = off.getContext('2d');
+    octx.drawImage(canvas, 0, 0, w, h, 0, 0, sampleW, sampleH);
+    const data = octx.getImageData(0, 0, sampleW, sampleH).data;
+    let inkCount = 0;
+    for (let i = 0; i < data.length; i += 4){
+      if (data[i + 3] > 10 && luminance(data[i], data[i + 1], data[i + 2]) < 250) inkCount++;
+    }
+    const inkFraction = inkCount / (sampleW * sampleH);
+    // Calibrated against the actual downsampled resolution used above (bilinear resize blurs
+    // thin lines into more surrounding pixels, raising these numbers well above the full-res
+    // equivalent): a page with only title/disclaimer/footer text (i.e. a failed image decode)
+    // measures ~3.8-4.5% here; a full page with the floor plan actually present runs ~7%+.
+    return inkFraction < 0.055;
+  }
+
+  // Tighten a manual crop selection down to the actual ink within it (bbox), and record where
+  // that ink's center of mass sits, so centering is based on the real print — not the raw edges
+  // of a hand-drawn selection, and not just the geometric middle of an irregular shape's bbox.
+  function contentRenderBox(item){
+    if (!item.canvas || !item.box) return item.box;
+    const cw = item.canvas.width, ch = item.canvas.height;
+    const bx = Math.max(0, Math.min(cw - 1, Math.round(item.box.x)));
+    const by = Math.max(0, Math.min(ch - 1, Math.round(item.box.y)));
+    const bw = Math.max(1, Math.min(Math.round(item.box.w), cw - bx));
+    const bh = Math.max(1, Math.min(Math.round(item.box.h), ch - by));
+    const analysis = analyzeContent(item.canvas, bx, by, bw, bh);
+    const box = boxFromRect(analysis.rect);
+    box.centroidX = analysis.centroidX;
+    box.centroidY = analysis.centroidY;
+    return box;
+  }
+
+  // Fit a (possibly non-square) crop box into an outSize x outSize canvas, centered on the
+  // box's plain geometric middle, with a uniform margin reserved on all four sides.
+  //
+  // (Earlier version centered on the ink's center-of-mass instead, to better handle irregular
+  // L-shaped units. That backfired badly on floor plans with one large, sparsely-outlined room
+  // — e.g. a big open office — since its outline contributes very little "ink" relative to its
+  // area, pulling the centroid hard toward whatever side has dense walls/text. That's a worse,
+  // more common failure mode than the mild imbalance plain bbox-centering has on L-shaped units,
+  // so centroid weighting was removed. Simple, predictable geometric centering is the default.)
+  function drawContained(ctx, sourceCanvas, box, outSize, marginFraction = 0){
+    const usable = outSize * (1 - marginFraction * 2);
+    const scale = usable / Math.max(box.w, box.h);
+    const dw = box.w * scale, dh = box.h * scale;
+    const ox = (outSize - dw) / 2, oy = (outSize - dh) / 2;
+    ctx.drawImage(sourceCanvas, box.x, box.y, box.w, box.h, ox, oy, dw, dh);
+  }
+
+  // Same placement math as drawContained, but using pica's high-quality resize for the actual
+  // scaling step — used at export time, where the quality difference matters most.
+  async function drawContainedHQ(ctx, sourceCanvas, box, outSize, marginFraction = 0){
+    const usable = outSize * (1 - marginFraction * 2);
+    const scale = usable / Math.max(box.w, box.h);
+    const dw = box.w * scale, dh = box.h * scale;
+    const ox = (outSize - dw) / 2, oy = (outSize - dh) / 2;
+    await hqDrawImage(ctx, sourceCanvas, box.x, box.y, box.w, box.h, ox, oy, dw, dh);
+  }
+
+  const FLOORPLAN_MARGIN = 0.05; // 5% uniform breathing room on every side
+
+  function isPdfFile(file){
+    return file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+  }
+
+  async function renderPdfPage(pdf, pageNum){
+    const page = await pdf.getPage(pageNum);
+    const baseViewport = page.getViewport({ scale: 1 });
+    const maxSide = 6000;
+    let scale = 400 / 72; // ~400dpi render — enough headroom for the 1200ppi (3600px) export without upscaling a soft source
+    const longSide = Math.max(baseViewport.width, baseViewport.height) * scale;
+    if (longSide > maxSide) scale = maxSide / Math.max(baseViewport.width, baseViewport.height);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    return canvas;
+  }
+
+  async function rasterizeImageFile(file){
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await loadImage(url);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      return canvas;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function updateThumb(item){
+    if (!item.canvas || !item.box) return;
+    const size = 320;
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const cx = c.getContext('2d');
+    cx.imageSmoothingEnabled = true;
+    cx.imageSmoothingQuality = 'high';
+    cx.fillStyle = '#ffffff';
+    cx.fillRect(0, 0, size, size);
+    drawContained(cx, item.canvas, item.renderBox || item.box, size, FLOORPLAN_MARGIN);
+    item.thumbUrl = c.toDataURL('image/jpeg', 0.85);
+  }
+
+  function cloneCanvas(src){
+    const c = document.createElement('canvas');
+    c.width = src.width; c.height = src.height;
+    c.getContext('2d').drawImage(src, 0, 0);
+    return c;
+  }
+
+  function fpAddFiles(fileList){
+    const files = Array.from(fileList).filter(f =>
+      f.type.startsWith('image/') || isPdfFile(f)
+    );
+    if (files.length === 0) return;
+
+    // Sequential: a multi-page PDF needs to show a page-select modal and wait for the
+    // person's choice before moving on, so files are processed one at a time.
+    (async () => {
+      for (const file of files){
+        if (isPdfFile(file)){
+          await fpHandlePdfFile(file);
+        } else {
+          await fpAddItem(file, null);
+        }
+      }
+    })();
+  }
+
+  async function fpHandlePdfFile(file){
+    let pdfjsLib, pdf;
+    try {
+      pdfjsLib = await waitForPdfJs();
+      const buf = await file.arrayBuffer();
+      pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    } catch (err){
+      console.error(err);
+      showToast(`Couldn't read "${file.name}": ${err.message || 'unknown error'}`);
+      return;
+    }
+
+    const numPages = pdf.numPages;
+    if (numPages <= 1){
+      await fpAddItem(file, { pdf, pageNum: 1, multiPage: false });
+      return;
+    }
+
+    const selectedPages = await promptPageSelection(file.name, numPages);
+    if (!selectedPages || selectedPages.length === 0) return; // cancelled or nothing picked
+
+    for (const pageNum of selectedPages){
+      await fpAddItem(file, { pdf, pageNum, multiPage: true });
+    }
+  }
+
+  async function fpAddItem(file, pdfInfo){
+    const id = fpUid();
+    const baseLabel = deriveLabel(file.name);
+    const label = pdfInfo && pdfInfo.multiPage ? `${baseLabel} - Page ${pdfInfo.pageNum}` : baseLabel;
+    const item = {
+      id, file, label, checked: true,
+      canvas: null, originalCanvas: null, stampHistory: [], srcW: 0, srcH: 0,
+      box: null, thumbUrl: null, loading: true, error: null
+    };
+    fpState.items.push(item);
+    fpRender();
+    try {
+      const canvas = pdfInfo ? await renderPdfPage(pdfInfo.pdf, pdfInfo.pageNum) : await rasterizeImageFile(file);
+      item.canvas = canvas;
+      item.originalCanvas = cloneCanvas(canvas);
+      item.srcW = canvas.width; item.srcH = canvas.height;
+      // Default box = the entire page/image, untouched. Nothing is auto-cropped away on upload —
+      // that guarantees no content can be silently discarded by an imperfect auto-trim heuristic.
+      // Cropping out a logo/letterhead is something the person chooses via Adjust Crop, not
+      // something that happens automatically.
+      item.box = { x: 0, y: 0, w: canvas.width, h: canvas.height };
+      item.renderBox = { ...item.box }; // no auto-tightening on upload either — full page, unmodified
+      if (pdfInfo) item.sparseWarning = detectSparseRender(canvas);
+      updateThumb(item);
+      item.loading = false;
+    } catch (err){
+      console.error(err);
+      item.loading = false;
+      item.error = err.message || 'Failed to process file';
+    }
+    fpRender();
+  }
+
+  // ---- Page-select modal for multi-page PDFs ----
+  const pageSelectOverlay = document.getElementById('pageSelectOverlay');
+  const pageSelectFileName = document.getElementById('pageSelectFileName');
+  const pageSelectList = document.getElementById('pageSelectList');
+  const pageSelectAll = document.getElementById('pageSelectAll');
+  const pageSelectCancelBtn = document.getElementById('pageSelectCancelBtn');
+  const pageSelectConfirmBtn = document.getElementById('pageSelectConfirmBtn');
+
+  function promptPageSelection(fileName, numPages){
+    return new Promise(resolve => {
+      pageSelectFileName.textContent = fileName;
+      pageSelectList.innerHTML = '';
+      for (let i = 1; i <= numPages; i++){
+        const label = document.createElement('label');
+        label.className = 'fmt-pill page-select-row on';
+        label.innerHTML = `<input type="checkbox" class="pageSelectItem" data-page="${i}" checked /> Page ${i}`;
+        pageSelectList.appendChild(label);
+      }
+      pageSelectAll.checked = true;
+      pageSelectAll.closest('.fmt-pill').classList.add('on');
+
+      const itemCheckboxes = () => Array.from(pageSelectList.querySelectorAll('.pageSelectItem'));
+
+      function syncRowHighlight(cb){
+        cb.closest('.fmt-pill').classList.toggle('on', cb.checked);
+      }
+      function syncAllCheckbox(){
+        pageSelectAll.checked = itemCheckboxes().every(cb => cb.checked);
+        pageSelectAll.closest('.fmt-pill').classList.toggle('on', pageSelectAll.checked);
+      }
+      itemCheckboxes().forEach(cb => cb.addEventListener('change', () => { syncRowHighlight(cb); syncAllCheckbox(); }));
+
+      pageSelectAll.onchange = () => {
+        itemCheckboxes().forEach(cb => { cb.checked = pageSelectAll.checked; syncRowHighlight(cb); });
+        pageSelectAll.closest('.fmt-pill').classList.toggle('on', pageSelectAll.checked);
+      };
+
+      function cleanup(){
+        pageSelectOverlay.classList.add('hidden');
+        pageSelectConfirmBtn.onclick = null;
+        pageSelectCancelBtn.onclick = null;
+        pageSelectAll.onchange = null;
+      }
+
+      pageSelectConfirmBtn.onclick = () => {
+        const selected = itemCheckboxes().filter(cb => cb.checked).map(cb => parseInt(cb.dataset.page, 10));
+        cleanup();
+        resolve(selected);
+      };
+      pageSelectCancelBtn.onclick = () => {
+        cleanup();
+        resolve(null);
+      };
+
+      pageSelectOverlay.classList.remove('hidden');
+    });
+  }
+
+  fpDropzone.addEventListener('click', () => fpFileInput.click());
+  fpFileInput.addEventListener('change', e => { fpAddFiles(e.target.files); fpFileInput.value = ''; });
+  fpDropzone.addEventListener('dragover', e => { e.preventDefault(); fpDropzone.classList.add('drag'); });
+  fpDropzone.addEventListener('dragleave', () => fpDropzone.classList.remove('drag'));
+  fpDropzone.addEventListener('drop', e => {
+    e.preventDefault(); fpDropzone.classList.remove('drag');
+    if (e.dataTransfer.files) fpAddFiles(e.dataTransfer.files);
+  });
+
+  function fpToggleChecked(id){
+    const item = fpState.items.find(p => p.id === id);
+    if (item) { item.checked = !item.checked; fpRender(); }
+  }
+  function fpUpdateLabel(id, val){
+    const item = fpState.items.find(p => p.id === id);
+    if (item) item.label = val;
+  }
+  function fpRemoveItem(id){
+    const idx = fpState.items.findIndex(p => p.id === id);
+    if (idx >= 0) { fpState.items.splice(idx, 1); fpRender(); }
+  }
+
+  document.getElementById('fpRestartBtn').addEventListener('click', () => {
+    fpState.items.forEach(p => { p.checked = true; });
+    fpRender();
+    showToast('All floor plans re-selected');
+  });
+  document.getElementById('fpClearBtn').addEventListener('click', () => {
+    if (fpState.items.length && !confirm('Remove all floor plans from the queue?')) return;
+    fpState.items = [];
+    fpRender();
+  });
+
+  function fpRender(){
+    const total = fpState.items.length;
+    const checkedCount = fpState.items.filter(p => p.checked).length;
+    fpTotalCount.textContent = total;
+    fpSelCount.textContent = checkedCount;
+    fpExportLabel.textContent = `Export Checked (${checkedCount})`;
+    fpExportBtn.disabled = checkedCount === 0;
+    fpActionsSection.style.display = total > 0 ? 'block' : 'none';
+
+    if (total === 0){
+      fpEmptyState.style.display = 'flex';
+      fpGrid.style.display = 'none';
+      fpGrid.innerHTML = '';
+      return;
+    }
+    fpEmptyState.style.display = 'none';
+    fpGrid.style.display = 'grid';
+
+    fpGrid.innerHTML = fpState.items.map(p => {
+      let preview;
+      if (p.loading) preview = `<div class="fp-status">Processing…</div>`;
+      else if (p.error) preview = `<div class="fp-status fp-error">${escapeHtml(p.error)}</div>`;
+      else preview = `<img src="${p.thumbUrl}" alt="${escapeHtml(p.label)}" />`;
+      const outDim = fpOutSizeFor(fpExportPPI);
+      const meta = p.box ? `${outDim}x${outDim}` : '—';
+      const sparseNotice = p.sparseWarning
+        ? `<div class="fp-sparse-warning" title="This page rendered with very little visible content — likely a failed image decode inside the PDF (common with CCITT/fax-compressed scans). Check Adjust Crop, and consider re-exporting the PDF with different image compression.">⚠ Page may be incomplete — check Adjust Crop</div>`
+        : '';
+      return `
+        <div class="card ${p.checked ? '' : 'unchecked'}" data-id="${p.id}">
+          <div class="thumb-wrap square">
+            ${preview}
+            <label class="thumb-check">
+              <input type="checkbox" data-action="fpcheck" data-id="${p.id}" ${p.checked ? 'checked' : ''} />
+            </label>
+            <div class="thumb-remove" data-action="fpremove" data-id="${p.id}" title="Remove">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </div>
+          </div>
+          <div class="card-body">
+            ${sparseNotice}
+            <input type="text" data-action="fplabel" data-id="${p.id}" value="${escapeHtml(p.label)}" placeholder="Floor plan label" />
+            <div class="card-meta">
+              <span>${meta}</span>
+              <span class="badge">1:1</span>
+            </div>
+            <button class="btn crop-btn" data-action="fpcrop" data-id="${p.id}" ${p.loading || p.error ? 'disabled' : ''}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
+              Adjust Crop
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    fpGrid.querySelectorAll('[data-action="fpcheck"]').forEach(el => el.addEventListener('change', () => fpToggleChecked(el.dataset.id)));
+    fpGrid.querySelectorAll('[data-action="fpremove"]').forEach(el => el.addEventListener('click', () => fpRemoveItem(el.dataset.id)));
+    fpGrid.querySelectorAll('[data-action="fplabel"]').forEach(el => el.addEventListener('input', () => fpUpdateLabel(el.dataset.id, el.value)));
+    fpGrid.querySelectorAll('[data-action="fpcrop"]').forEach(el => el.addEventListener('click', () => openCropModal(el.dataset.id)));
+  }
+
+  // ---- Crop modal: freeform crop over the rasterized source; centered onto a 1:1 canvas on export ----
+  const cropModalOverlay = document.getElementById('cropModalOverlay');
+  const cropModalLabel = document.getElementById('cropModalLabel');
+  const cropStage = document.getElementById('cropStage');
+  const cropStageCanvas = document.getElementById('cropStageCanvas');
+  const cropBoxEl = document.getElementById('cropBox');
+  const cropHandleEl = document.getElementById('cropHandle');
+  const modeBtns = document.querySelectorAll('.crop-modebtn');
+  const stampModeBtn = document.getElementById('stampModeBtn');
+  const brushSizeInput = document.getElementById('brushSize');
+  const brushSizeLabel = document.getElementById('brushSizeLabel');
+  const undoStampBtn = document.getElementById('undoStampBtn');
+  const resetStampsBtn = document.getElementById('resetStampsBtn');
+  const sampleMarker = document.getElementById('sampleMarker');
+  const brushCursor = document.getElementById('brushCursor');
+
+  let cropTarget = null;
+  let cropBoxState = null; // {x,y,w,h} in source-pixel space
+  let cropDisplayScale = 1;
+  let cropEntrySnapshot = null; // full-canvas snapshot taken on open, restored on Cancel
+  let dragMode = null; // 'move' | 'resize'
+  let dragStart = null;
+
+  let editMode = 'crop'; // 'crop' | 'sample' | 'stamp'
+  let sampleCanvas = null;
+  let brushSize = parseInt(brushSizeInput.value, 10); // display px
+  let isPaintingStamp = false;
+  let lastStampPoint = null; // source-px space
+
+  function openCropModal(id){
+    const item = fpState.items.find(p => p.id === id);
+    if (!item || !item.canvas) return;
+    cropTarget = item;
+    cropBoxState = { ...item.box };
+    cropEntrySnapshot = cloneCanvas(item.canvas);
+    cropModalLabel.textContent = item.label || 'Untitled';
+
+    const maxW = Math.min(window.innerWidth * 0.82, 920);
+    const maxH = Math.min(window.innerHeight * 0.6, 760);
+    const scale = Math.min(maxW / item.srcW, maxH / item.srcH, 1);
+    cropDisplayScale = scale;
+    const dispW = Math.round(item.srcW * scale), dispH = Math.round(item.srcH * scale);
+
+    cropStage.style.width = dispW + 'px';
+    cropStage.style.height = dispH + 'px';
+    cropStageCanvas.width = dispW;
+    cropStageCanvas.height = dispH;
+    refreshDisplayFromSource();
+
+    setEditMode('crop');
+    sampleCanvas = null;
+    stampModeBtn.disabled = true;
+    sampleMarker.style.display = 'none';
+    undoStampBtn.disabled = !(item.stampHistory && item.stampHistory.length);
+
+    syncCropBoxUI();
+    cropModalOverlay.classList.remove('hidden');
+  }
+
+  function refreshDisplayFromSource(){
+    if (!cropTarget) return;
+    const ctx = cropStageCanvas.getContext('2d');
+    ctx.clearRect(0, 0, cropStageCanvas.width, cropStageCanvas.height);
+    ctx.drawImage(cropTarget.canvas, 0, 0, cropTarget.srcW, cropTarget.srcH, 0, 0, cropStageCanvas.width, cropStageCanvas.height);
+  }
+
+  function syncCropBoxUI(){
+    const s = cropDisplayScale;
+    cropBoxEl.style.left = (cropBoxState.x * s) + 'px';
+    cropBoxEl.style.top = (cropBoxState.y * s) + 'px';
+    cropBoxEl.style.width = (cropBoxState.w * s) + 'px';
+    cropBoxEl.style.height = (cropBoxState.h * s) + 'px';
+  }
+
+  function closeCropModal(){
+    cropModalOverlay.classList.add('hidden');
+    cropTarget = null; cropBoxState = null; cropEntrySnapshot = null;
+    sampleCanvas = null; isPaintingStamp = false; lastStampPoint = null;
+  }
+
+  document.getElementById('cropCancelBtn').addEventListener('click', () => {
+    if (cropTarget && cropEntrySnapshot){
+      const ctx = cropTarget.canvas.getContext('2d');
+      ctx.clearRect(0, 0, cropTarget.canvas.width, cropTarget.canvas.height);
+      ctx.drawImage(cropEntrySnapshot, 0, 0);
+      cropTarget.stampHistory = [];
+    }
+    closeCropModal();
+  });
+  document.getElementById('cropResetBtn').addEventListener('click', () => {
+    if (!cropTarget) return;
+    const rect = autoTrimRect(cropTarget.canvas, 0, 0, cropTarget.srcW, cropTarget.srcH);
+    cropBoxState = boxFromRect(rect);
+    syncCropBoxUI();
+  });
+  document.getElementById('cropSaveBtn').addEventListener('click', () => {
+    if (!cropTarget) return;
+    cropTarget.box = { ...cropBoxState };
+    cropTarget.renderBox = contentRenderBox(cropTarget);
+    updateThumb(cropTarget);
+    fpRender();
+    closeCropModal();
+  });
+
+  // ---- Mode switching (Crop / Sample Blank Area / Stamp) ----
+  function setEditMode(mode){
+    if (mode === 'stamp' && !sampleCanvas) return; // need a sample before stamping
+    editMode = mode;
+    modeBtns.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+    const isCrop = mode === 'crop';
+    cropBoxEl.style.pointerEvents = isCrop ? 'auto' : 'none';
+    cropBoxEl.style.opacity = isCrop ? '1' : '0.35';
+    cropStage.style.cursor = isCrop ? 'default' : 'none';
+    sampleMarker.style.display = (mode !== 'crop' && sampleCanvas) ? 'block' : 'none';
+    brushCursor.style.display = 'none';
+  }
+  modeBtns.forEach(btn => btn.addEventListener('click', () => setEditMode(btn.dataset.mode)));
+
+  brushSizeInput.addEventListener('input', () => {
+    brushSize = parseInt(brushSizeInput.value, 10);
+    brushSizeLabel.textContent = brushSize + 'px';
+  });
+
+  // ---- Sampling a clean patch ----
+  function takeSample(srcX, srcY, srcSize){
+    if (!cropTarget) return;
+    const s = Math.max(4, Math.round(srcSize));
+    const half = s / 2;
+    const sx = Math.max(0, Math.min(cropTarget.srcW - s, srcX - half));
+    const sy = Math.max(0, Math.min(cropTarget.srcH - s, srcY - half));
+    const sc = document.createElement('canvas');
+    sc.width = s; sc.height = s;
+    sc.getContext('2d').drawImage(cropTarget.canvas, sx, sy, s, s, 0, 0, s, s);
+    sampleCanvas = sc;
+    stampModeBtn.disabled = false;
+
+    const scale = cropDisplayScale;
+    sampleMarker.style.left = (sx * scale) + 'px';
+    sampleMarker.style.top = (sy * scale) + 'px';
+    sampleMarker.style.width = (s * scale) + 'px';
+    sampleMarker.style.height = (s * scale) + 'px';
+    sampleMarker.style.display = 'block';
+
+    showToast('Sample captured — switch to Stamp and paint over what you want covered');
+    setEditMode('stamp');
+  }
+
+  // ---- Stamping ----
+  function stampAt(srcX, srcY, srcSize){
+    if (!sampleCanvas || !cropTarget) return;
+    const sctx = cropTarget.canvas.getContext('2d');
+    sctx.save();
+    sctx.beginPath();
+    sctx.arc(srcX, srcY, srcSize / 2, 0, Math.PI * 2);
+    sctx.clip();
+    sctx.drawImage(sampleCanvas, 0, 0, sampleCanvas.width, sampleCanvas.height, srcX - srcSize / 2, srcY - srcSize / 2, srcSize, srcSize);
+    sctx.restore();
+
+    const s = cropDisplayScale;
+    const dctx = cropStageCanvas.getContext('2d');
+    dctx.save();
+    dctx.beginPath();
+    dctx.arc(srcX * s, srcY * s, (srcSize * s) / 2, 0, Math.PI * 2);
+    dctx.clip();
+    dctx.drawImage(sampleCanvas, 0, 0, sampleCanvas.width, sampleCanvas.height,
+      (srcX - srcSize / 2) * s, (srcY - srcSize / 2) * s, srcSize * s, srcSize * s);
+    dctx.restore();
+  }
+
+  function stampAlongPath(p0, p1, srcSize){
+    const dist = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+    const step = Math.max(srcSize * 0.25, 3);
+    const steps = Math.max(1, Math.ceil(dist / step));
+    for (let i = 1; i <= steps; i++){
+      const t = i / steps;
+      stampAt(p0.x + (p1.x - p0.x) * t, p0.y + (p1.y - p0.y) * t, srcSize);
+    }
+  }
+
+  function pushStampHistory(){
+    if (!cropTarget) return;
+    cropTarget.stampHistory = cropTarget.stampHistory || [];
+    cropTarget.stampHistory.push(cloneCanvas(cropTarget.canvas));
+    if (cropTarget.stampHistory.length > 8) cropTarget.stampHistory.shift();
+    undoStampBtn.disabled = false;
+  }
+
+  undoStampBtn.addEventListener('click', () => {
+    if (!cropTarget || !cropTarget.stampHistory || cropTarget.stampHistory.length === 0) return;
+    const prev = cropTarget.stampHistory.pop();
+    const ctx = cropTarget.canvas.getContext('2d');
+    ctx.clearRect(0, 0, cropTarget.canvas.width, cropTarget.canvas.height);
+    ctx.drawImage(prev, 0, 0);
+    refreshDisplayFromSource();
+    if (cropTarget.stampHistory.length === 0) undoStampBtn.disabled = true;
+  });
+
+  resetStampsBtn.addEventListener('click', () => {
+    if (!cropTarget || !cropTarget.originalCanvas) return;
+    if (!confirm('Reset all stamps and restore the original scan for this file?')) return;
+    const ctx = cropTarget.canvas.getContext('2d');
+    ctx.clearRect(0, 0, cropTarget.canvas.width, cropTarget.canvas.height);
+    ctx.drawImage(cropTarget.originalCanvas, 0, 0);
+    cropTarget.stampHistory = [];
+    undoStampBtn.disabled = true;
+    refreshDisplayFromSource();
+  });
+
+  // ---- Crop box drag (move/resize) ----
+  cropBoxEl.addEventListener('pointerdown', e => {
+    if (e.target === cropHandleEl) return;
+    dragMode = 'move';
+    dragStart = { px: e.clientX, py: e.clientY, box: { ...cropBoxState } };
+    e.preventDefault();
+  });
+  cropHandleEl.addEventListener('pointerdown', e => {
+    dragMode = 'resize';
+    dragStart = { px: e.clientX, py: e.clientY, box: { ...cropBoxState } };
+    e.stopPropagation();
+    e.preventDefault();
+  });
+
+  // ---- Sample/stamp interaction on the stage itself ----
+  function stagePoint(e){
+    const rect = cropStage.getBoundingClientRect();
+    const dispX = e.clientX - rect.left, dispY = e.clientY - rect.top;
+    return { srcX: dispX / cropDisplayScale, srcY: dispY / cropDisplayScale, dispX, dispY };
+  }
+
+  cropStage.addEventListener('pointerdown', e => {
+    if (!cropTarget || editMode === 'crop') return;
+    const { srcX, srcY } = stagePoint(e);
+    const srcBrush = brushSize / cropDisplayScale;
+
+    if (editMode === 'sample'){
+      takeSample(srcX, srcY, srcBrush);
+    } else if (editMode === 'stamp'){
+      isPaintingStamp = true;
+      pushStampHistory();
+      stampAt(srcX, srcY, srcBrush);
+      lastStampPoint = { x: srcX, y: srcY };
+    }
+    e.preventDefault();
+  });
+
+  cropStage.addEventListener('pointermove', e => {
+    if (editMode === 'crop' || !cropTarget){
+      brushCursor.style.display = 'none';
+      return;
+    }
+    const { dispX, dispY } = stagePoint(e);
+    brushCursor.style.left = (dispX - brushSize / 2) + 'px';
+    brushCursor.style.top = (dispY - brushSize / 2) + 'px';
+    brushCursor.style.width = brushSize + 'px';
+    brushCursor.style.height = brushSize + 'px';
+    brushCursor.style.display = 'block';
+  });
+  cropStage.addEventListener('pointerleave', () => { brushCursor.style.display = 'none'; });
+
+  window.addEventListener('pointermove', e => {
+    if (!cropTarget) return;
+
+    if (dragMode){
+      const s = cropDisplayScale;
+      const dx = (e.clientX - dragStart.px) / s;
+      const dy = (e.clientY - dragStart.py) / s;
+
+      if (dragMode === 'move'){
+        let x = dragStart.box.x + dx, y = dragStart.box.y + dy;
+        x = Math.max(0, Math.min(cropTarget.srcW - dragStart.box.w, x));
+        y = Math.max(0, Math.min(cropTarget.srcH - dragStart.box.h, y));
+        cropBoxState.x = x; cropBoxState.y = y;
+      } else if (dragMode === 'resize'){
+        // Width and height resize independently — the selection can be any shape.
+        // It gets centered onto a 1:1 canvas (with padding on the shorter axis) at export/save time.
+        const maxW = cropTarget.srcW - dragStart.box.x;
+        const maxH = cropTarget.srcH - dragStart.box.y;
+        const minDim = 20;
+        const w = Math.max(minDim, Math.min(dragStart.box.w + dx, maxW));
+        const h = Math.max(minDim, Math.min(dragStart.box.h + dy, maxH));
+        cropBoxState.w = w; cropBoxState.h = h;
+      }
+      syncCropBoxUI();
+      return;
+    }
+
+    if (editMode === 'stamp' && isPaintingStamp && lastStampPoint){
+      const { srcX, srcY } = stagePoint(e);
+      const srcBrush = brushSize / cropDisplayScale;
+      stampAlongPath(lastStampPoint, { x: srcX, y: srcY }, srcBrush);
+      lastStampPoint = { x: srcX, y: srcY };
+    }
+  });
+  window.addEventListener('pointerup', () => {
+    dragMode = null; dragStart = null;
+    isPaintingStamp = false; lastStampPoint = null;
+  });
+
+  // ---- Floor plan export: crop to 1:1 (capped at 3000px), zip, download ----
+  fpExportBtn.addEventListener('click', async () => {
+    const checkedItems = fpState.items.filter(p => p.checked && p.canvas && p.box);
+    if (checkedItems.length === 0) return;
+
+    fpExportBtn.disabled = true;
+    const originalLabel = fpExportLabel.textContent;
+    fpExportLabel.textContent = 'Exporting…';
+
+    try {
+      const zip = new JSZip();
+      const usedNames = new Set();
+      let count = 0;
+      const floorplanOutSize = fpOutSizeFor(fpExportPPI);
+
+      for (const item of checkedItems){
+        const box = item.renderBox || item.box;
+        const outSize = floorplanOutSize;
+        const canvas = document.createElement('canvas');
+        canvas.width = outSize; canvas.height = outSize;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+
+        let baseName = sanitize(item.label) || `floorplan_${count + 1}`;
+        let finalName = baseName, dupe = 1;
+        while (usedNames.has(finalName.toLowerCase())){
+          dupe++; finalName = `${baseName}_${dupe}`;
+        }
+        usedNames.add(finalName.toLowerCase());
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, outSize, outSize);
+        await drawContainedHQ(ctx, item.canvas, box, outSize, FLOORPLAN_MARGIN);
+        let blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.95));
+        if (blob) { blob = await embedJpegDpi(blob, fpExportPPI); zip.file(`${finalName}.jpg`, blob); }
+        count++;
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const zipName = 'Floor Plans.zip';
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url; a.download = zipName; a.click();
+      URL.revokeObjectURL(url);
+
+      showToast(`Exported ${count} floor plan${count === 1 ? '' : 's'} to "${zipName}"`);
+    } catch (err){
+      console.error(err);
+      showToast(`Export failed: ${err.message || 'unknown error'}`);
+    } finally {
+      fpExportLabel.textContent = originalLabel;
+      fpRender();
+    }
+  });
+
+  // ================= TABS =================
+  const tabAmenities = document.getElementById('tabAmenities');
+  const tabUnitImages = document.getElementById('tabUnitImages');
+  const tabFloorplans = document.getElementById('tabFloorplans');
+  const amenitySidebar = document.getElementById('amenitySidebar');
+  const unitSidebar = document.getElementById('unitSidebar');
+  const floorplanSidebar = document.getElementById('floorplanSidebar');
+  const amenityFooter = document.getElementById('amenityFooter');
+  const unitFooter = document.getElementById('unitFooter');
+  const floorplanFooter = document.getElementById('floorplanFooter');
+  const amenityMain = document.getElementById('amenityMain');
+  const unitMain = document.getElementById('unitMain');
+  const floorplanMain = document.getElementById('floorplanMain');
+
+  function setActiveTab(tab){
+    activeTab = tab;
+    tabAmenities.classList.toggle('active', tab === 'amenities');
+    tabUnitImages.classList.toggle('active', tab === 'unitimages');
+    tabFloorplans.classList.toggle('active', tab === 'floorplans');
+    amenitySidebar.style.display = tab === 'amenities' ? 'block' : 'none';
+    unitSidebar.style.display = tab === 'unitimages' ? 'block' : 'none';
+    floorplanSidebar.style.display = tab === 'floorplans' ? 'block' : 'none';
+    amenityFooter.style.display = tab === 'amenities' ? 'block' : 'none';
+    unitFooter.style.display = tab === 'unitimages' ? 'block' : 'none';
+    floorplanFooter.style.display = tab === 'floorplans' ? 'block' : 'none';
+    amenityMain.style.display = tab === 'amenities' ? 'block' : 'none';
+    unitMain.style.display = tab === 'unitimages' ? 'block' : 'none';
+    floorplanMain.style.display = tab === 'floorplans' ? 'block' : 'none';
+  }
+  tabAmenities.addEventListener('click', () => setActiveTab('amenities'));
+  tabUnitImages.addEventListener('click', () => setActiveTab('unitimages'));
+  tabFloorplans.addEventListener('click', () => setActiveTab('floorplans'));
+
+  render();
+  uiRender();
+  fpRender();
+})();
+</script>
+</body>
+</html>
