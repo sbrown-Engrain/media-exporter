@@ -276,6 +276,12 @@
 
       <div id="amenitySidebar">
       <div class="section">
+        <p class="section-label">Property Name</p>
+        <input type="text" id="propertyName" placeholder="e.g. Sunset Ridge" />
+        <p class="t2" style="margin-top:6px; text-align:left; padding:0 2px;">Used only to name the exported zip file — individual photo names are unaffected.</p>
+      </div>
+
+      <div class="section">
         <p class="section-label">Photos</p>
         <div class="dropzone" id="dropzone">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A5 5 0 0 1 6 5.3a6 6 0 0 1 11.3-2A5.5 5.5 0 0 1 20 13.8"/><path d="M12 12v8"/><path d="m9 15 3-3 3 3"/></svg>
@@ -319,6 +325,12 @@
       <!-- /amenitySidebar -->
 
       <div id="unitSidebar" style="display:none;">
+        <div class="section">
+          <p class="section-label">Property Name</p>
+          <input type="text" id="uiZipPropertyName" placeholder="e.g. Sunset Ridge" />
+          <p class="t2" style="margin-top:6px; text-align:left; padding:0 2px;">Used only to name the exported zip file — image names and the config CSV are unaffected.</p>
+        </div>
+
         <div class="section">
           <p class="section-label">Unit Data (CSV)</p>
           <button type="button" class="btn" id="uiCsvBtn">
@@ -399,6 +411,12 @@
       <!-- /unitSidebar -->
 
       <div id="floorplanSidebar" style="display:none;">
+        <div class="section">
+          <p class="section-label">Property Name</p>
+          <input type="text" id="fpPropertyName" placeholder="e.g. Sunset Ridge" />
+          <p class="t2" style="margin-top:6px; text-align:left; padding:0 2px;">Used only to name the exported zip file — individual file names are unaffected.</p>
+        </div>
+
         <div class="section">
           <p class="section-label">Floor Plans</p>
           <div class="dropzone" id="fpDropzone">
@@ -613,6 +631,13 @@
 
   function sanitize(str){
     return (str || '').trim().replace(/[\/\\?%*:|"<>]/g, '_').replace(/\.+$/g, '').trim();
+  }
+
+  // Prefixes the zip filename with a property name when one's entered — never touches individual
+  // photo/file names, only the name of the downloaded zip itself.
+  function zipFileName(propertyNameValue, defaultName){
+    const clean = sanitize(propertyNameValue);
+    return clean ? `${clean} ${defaultName}` : defaultName;
   }
 
   function uid(){ return 'p_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
@@ -977,7 +1002,7 @@
       }
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const zipName = 'Amenity Images.zip';
+      const zipName = zipFileName(document.getElementById('propertyName').value, 'Amenity Images.zip');
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url; a.download = zipName; a.click();
@@ -1490,7 +1515,7 @@
       }
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const zipName = 'Unit Images.zip';
+      const zipName = zipFileName(document.getElementById('uiZipPropertyName').value, 'Unit Images.zip');
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url; a.download = zipName; a.click();
@@ -2318,7 +2343,7 @@
       }
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const zipName = 'Floor Plans.zip';
+      const zipName = zipFileName(document.getElementById('fpPropertyName').value, 'Floor Plans.zip');
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url; a.download = zipName; a.click();
