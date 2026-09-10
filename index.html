@@ -308,6 +308,20 @@
         </div>
       </div>
 
+      <div class="section" id="universalSection" style="display:none;">
+        <p class="section-label">Universal Edit</p>
+        <div class="vpos-control">
+          <span>Top</span>
+          <input type="range" id="universalVpos" min="0" max="100" value="100" />
+          <span>Bottom</span>
+        </div>
+        <button class="btn" id="universalApplyBtn" style="margin-top:8px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          Apply to All Photos
+        </button>
+        <p class="t2" style="margin-top:6px; text-align:left; padding:0 2px;">Sets the crop position on every landscape photo that has one. Portrait photos aren't affected.</p>
+      </div>
+
       <div class="section" id="actionsSection" style="display:none;">
         <p class="section-label">Controls &amp; Actions</p>
         <div class="btn-row">
@@ -555,6 +569,7 @@
     </div>
     <div class="crop-actions">
       <button class="btn" id="cropResetBtn">Reset to Auto-Trim</button>
+      <button class="btn" id="cropApplyAllBtn" title="Apply this same crop (proportionally) to every other floor plan">Apply to All</button>
       <button class="btn" id="cropCancelBtn">Cancel</button>
       <button class="btn btn-primary" id="cropSaveBtn" style="width:auto;">Save Crop</button>
     </div>
@@ -605,6 +620,9 @@
   const grid = document.getElementById('grid');
   const emptyState = document.getElementById('emptyState');
   const actionsSection = document.getElementById('actionsSection');
+  const universalSection = document.getElementById('universalSection');
+  const universalVpos = document.getElementById('universalVpos');
+  const universalApplyBtn = document.getElementById('universalApplyBtn');
   const selCount = document.getElementById('selCount');
   const totalCount = document.getElementById('totalCount');
   const exportBtn = document.getElementById('exportBtn');
@@ -695,6 +713,21 @@
     const img = card && card.querySelector('.thumb-wrap img');
     if (img) img.style.objectPosition = `center ${Math.round(item.vPos * 100)}%`;
   }
+  universalApplyBtn.addEventListener('click', () => {
+    const vPos = Math.max(0, Math.min(100, parseInt(universalVpos.value, 10))) / 100;
+    let count = 0;
+    state.photos.forEach(p => {
+      const isPortrait = p.w && p.h && p.h > p.w;
+      const needsVCrop = p.w && p.h && !isPortrait && (p.w / p.h <= 16 / 9);
+      if (needsVCrop){ p.vPos = vPos; count++; }
+    });
+    if (count === 0){
+      showToast('No landscape photos to apply this to yet.');
+      return;
+    }
+    render();
+    showToast(`Applied position to ${count} photo${count === 1 ? '' : 's'}`);
+  });
   function removeItem(id){
     const idx = state.photos.findIndex(p => p.id === id);
     if (idx >= 0) {
@@ -724,6 +757,7 @@
     exportLabel.textContent = `Export Checked (${checkedCount})`;
     exportBtn.disabled = checkedCount === 0;
     actionsSection.style.display = total > 0 ? 'block' : 'none';
+    universalSection.style.display = total > 0 ? 'block' : 'none';
 
     if (total === 0){
       emptyState.style.display = 'flex';
@@ -2107,6 +2141,40 @@
     updateThumb(cropTarget);
     fpRender();
     closeCropModal();
+  });
+  document.getElementById('cropApplyAllBtn').addEventListener('click', () => {
+    if (!cropTarget) return;
+    // Commit the crop for this item first, exactly like Save Crop does.
+    cropTarget.box = { ...cropBoxState };
+    cropTarget.renderBox = contentRenderBox(cropTarget);
+    updateThumb(cropTarget);
+
+    // Express the crop as a fraction of this item's own dimensions, then apply that same
+    // proportional rectangle to every other floor plan — most useful when a batch of sheets
+    // shares the same letterhead/logo layout, so one crop fixes the whole set.
+    const fx = cropTarget.box.x / cropTarget.srcW;
+    const fy = cropTarget.box.y / cropTarget.srcH;
+    const fw = cropTarget.box.w / cropTarget.srcW;
+    const fh = cropTarget.box.h / cropTarget.srcH;
+
+    let count = 0;
+    fpState.items.forEach(item => {
+      if (item === cropTarget || !item.canvas || item.loading || item.error) return;
+      let w = fw * item.srcW, h = fh * item.srcH;
+      let x = fx * item.srcW, y = fy * item.srcH;
+      w = Math.max(20, Math.min(w, item.srcW));
+      h = Math.max(20, Math.min(h, item.srcH));
+      x = Math.max(0, Math.min(x, item.srcW - w));
+      y = Math.max(0, Math.min(y, item.srcH - h));
+      item.box = { x, y, w, h };
+      item.renderBox = contentRenderBox(item);
+      updateThumb(item);
+      count++;
+    });
+
+    fpRender();
+    closeCropModal();
+    showToast(count > 0 ? `Applied this crop to ${count} other floor plan${count === 1 ? '' : 's'}` : 'Saved — no other floor plans to apply it to yet.');
   });
 
   // ---- Mode switching (Crop / Sample Blank Area / Stamp) ----
