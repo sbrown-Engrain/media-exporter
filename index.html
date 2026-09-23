@@ -1774,6 +1774,93 @@
     return canvas;
   }
 
+  // For very large sheets (e.g. a 42"x30" D-size drawing), the upload-time preview render is
+  // capped well below what the full sheet would need for its finest text to stay legible — and
+  // it can't not be, since one fixed cap has to serve every possible crop someone might draw.
+  // Rather than raise that cap globally (huge memory cost for no benefit on typical crops, per
+  // the whole-sheet-vs-cropped-region math), we re-render the PDF a second time at export,
+  // directly at the resolution the *chosen crop* actually needs. This also renders the vector
+  // text straight at close to its final size instead of downscaling an already-rasterized page —
+  // the PDF's own rasterizer gets to make anti-aliasing decisions at the real output pixel grid,
+  // which noticeably sharpens small text/thin lines versus a big-raster-then-resize path, even
+  // at the same final pixel count.
+  async function renderPdfPageForCrop(pdfRef, pageNum, boxFrac, outSize, marginFraction){
+    const page = await pdfRef.getPage(pageNum);
+    const baseViewport = page.getViewport({ scale: 1 });
+    const pageWpt = baseViewport.width, pageHpt = baseViewport.height;
+    const cropWpt = boxFrac.w * pageWpt, cropHpt = boxFrac.h * pageHpt;
+
+    const usable = outSize * (1 - marginFraction * 2);
+    const supersample = 2; // a little headroom so the final pica resize still has room to work with
+    let scale = (usable * supersample) / Math.max(cropWpt, cropHpt);
+
+    // Safety bound: cap so a tiny crop on a huge sheet can't blow up into an unreasonable canvas.
+    // (No minimum floor here — a crop covering most of a large page correctly computes a lower
+    // scale than a small crop would, and forcing it back up would just reproduce the original
+    // big-render-then-downscale problem this function exists to avoid.)
+    const maxSide = 6000;
+    if (Math.max(pageWpt, pageHpt) * scale > maxSide) scale = maxSide / Math.max(pageWpt, pageHpt);
+
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    return canvas;
+  }
+
+  // Replays recorded stamp strokes onto a freshly-rendered canvas of any resolution. Each op's
+  // sample location and stroke path were recorded as fractions of the page (see takeSample and
+  // the stamp pointer handlers), so they scale cleanly to a different-sized render. Crucially,
+  // each patch is re-sampled fresh from THIS canvas at replay time — not reused from whatever
+  // resolution it was originally sampled at — so the covering patch is full quality too, not an
+  // upscaled leftover from the interactive-editing resolution. Ops replay in their original order
+  // so later strokes that sampled from an area an earlier stroke had just covered still work.
+  function replayStampOps(canvas, stampOps){
+    if (!stampOps || !stampOps.length) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+
+    function paintAt(sampleCanvasLocal, sampleSize, px, py, brushPx){
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(px, py, brushPx / 2, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(sampleCanvasLocal, 0, 0, sampleSize, sampleSize, px - brushPx / 2, py - brushPx / 2, brushPx, brushPx);
+      ctx.restore();
+    }
+
+    stampOps.forEach(op => {
+      const sampleSize = Math.max(4, Math.round(op.sampleSize * w));
+      const half = sampleSize / 2;
+      const sx = Math.max(0, Math.min(w - sampleSize, op.sampleX * w - half));
+      const sy = Math.max(0, Math.min(h - sampleSize, op.sampleY * h - half));
+      const sampleCanvasLocal = document.createElement('canvas');
+      sampleCanvasLocal.width = sampleSize; sampleCanvasLocal.height = sampleSize;
+      sampleCanvasLocal.getContext('2d').drawImage(canvas, sx, sy, sampleSize, sampleSize, 0, 0, sampleSize, sampleSize);
+
+      const brushPx = Math.max(2, op.brushSize * w);
+      const points = op.points.map(p => ({ x: p.x * w, y: p.y * h }));
+      if (points.length === 1){
+        paintAt(sampleCanvasLocal, sampleSize, points[0].x, points[0].y, brushPx);
+      } else {
+        for (let i = 1; i < points.length; i++){
+          const p0 = points[i - 1], p1 = points[i];
+          const dist = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+          const step = Math.max(brushPx * 0.25, 3);
+          const steps = Math.max(1, Math.ceil(dist / step));
+          for (let s = 1; s <= steps; s++){
+            const t = s / steps;
+            paintAt(sampleCanvasLocal, sampleSize, p0.x + (p1.x - p0.x) * t, p0.y + (p1.y - p0.y) * t, brushPx);
+          }
+        }
+      }
+    });
+  }
+
   async function rasterizeImageFile(file){
     const url = URL.createObjectURL(file);
     try {
@@ -1860,8 +1947,9 @@
     const label = pdfInfo && pdfInfo.multiPage ? `${baseLabel} - Page ${pdfInfo.pageNum}` : baseLabel;
     const item = {
       id, file, label, checked: true,
-      canvas: null, originalCanvas: null, stampHistory: [], srcW: 0, srcH: 0,
-      box: null, thumbUrl: null, loading: true, error: null
+      canvas: null, originalCanvas: null, stampHistory: [], stampOps: [], srcW: 0, srcH: 0,
+      box: null, thumbUrl: null, loading: true, error: null,
+      pdfRef: pdfInfo ? pdfInfo.pdf : null, pdfPageNum: pdfInfo ? pdfInfo.pageNum : null
     };
     fpState.items.push(item);
     fpRender();
@@ -2059,11 +2147,14 @@
   let cropBoxState = null; // {x,y,w,h} in source-pixel space
   let cropDisplayScale = 1;
   let cropEntrySnapshot = null; // full-canvas snapshot taken on open, restored on Cancel
+  let cropEntryStampOpsSnapshot = null; // stampOps at open time, restored on Cancel
   let dragMode = null; // 'move' | 'resize'
   let dragStart = null;
 
   let editMode = 'crop'; // 'crop' | 'sample' | 'stamp'
   let sampleCanvas = null;
+  let pendingSampleFrac = null; // {x,y,size} as fractions of the page canvas, set by takeSample
+  let currentStampOp = null;   // the in-progress stroke being recorded, null when not painting
   let brushSize = parseInt(brushSizeInput.value, 10); // display px
   let isPaintingStamp = false;
   let lastStampPoint = null; // source-px space
@@ -2074,6 +2165,7 @@
     cropTarget = item;
     cropBoxState = { ...item.box };
     cropEntrySnapshot = cloneCanvas(item.canvas);
+    cropEntryStampOpsSnapshot = [...(item.stampOps || [])];
     cropModalLabel.textContent = item.label || 'Untitled';
 
     const maxW = Math.min(window.innerWidth * 0.82, 920);
@@ -2115,8 +2207,8 @@
 
   function closeCropModal(){
     cropModalOverlay.classList.add('hidden');
-    cropTarget = null; cropBoxState = null; cropEntrySnapshot = null;
-    sampleCanvas = null; isPaintingStamp = false; lastStampPoint = null;
+    cropTarget = null; cropBoxState = null; cropEntrySnapshot = null; cropEntryStampOpsSnapshot = null;
+    sampleCanvas = null; isPaintingStamp = false; lastStampPoint = null; currentStampOp = null;
   }
 
   document.getElementById('cropCancelBtn').addEventListener('click', () => {
@@ -2125,6 +2217,7 @@
       ctx.clearRect(0, 0, cropTarget.canvas.width, cropTarget.canvas.height);
       ctx.drawImage(cropEntrySnapshot, 0, 0);
       cropTarget.stampHistory = [];
+      cropTarget.stampOps = cropEntryStampOpsSnapshot || [];
     }
     closeCropModal();
   });
@@ -2207,6 +2300,7 @@
     sc.width = s; sc.height = s;
     sc.getContext('2d').drawImage(cropTarget.canvas, sx, sy, s, s, 0, 0, s, s);
     sampleCanvas = sc;
+    pendingSampleFrac = { x: (sx + half) / cropTarget.srcW, y: (sy + half) / cropTarget.srcH, size: s / cropTarget.srcW };
     stampModeBtn.disabled = false;
 
     const scale = cropDisplayScale;
@@ -2266,6 +2360,7 @@
     const ctx = cropTarget.canvas.getContext('2d');
     ctx.clearRect(0, 0, cropTarget.canvas.width, cropTarget.canvas.height);
     ctx.drawImage(prev, 0, 0);
+    if (cropTarget.stampOps && cropTarget.stampOps.length) cropTarget.stampOps.pop();
     refreshDisplayFromSource();
     if (cropTarget.stampHistory.length === 0) undoStampBtn.disabled = true;
   });
@@ -2277,6 +2372,7 @@
     ctx.clearRect(0, 0, cropTarget.canvas.width, cropTarget.canvas.height);
     ctx.drawImage(cropTarget.originalCanvas, 0, 0);
     cropTarget.stampHistory = [];
+    cropTarget.stampOps = [];
     undoStampBtn.disabled = true;
     refreshDisplayFromSource();
   });
@@ -2314,6 +2410,13 @@
       pushStampHistory();
       stampAt(srcX, srcY, srcBrush);
       lastStampPoint = { x: srcX, y: srcY };
+      if (pendingSampleFrac){
+        currentStampOp = {
+          sampleX: pendingSampleFrac.x, sampleY: pendingSampleFrac.y, sampleSize: pendingSampleFrac.size,
+          brushSize: srcBrush / cropTarget.srcW,
+          points: [{ x: srcX / cropTarget.srcW, y: srcY / cropTarget.srcH }]
+        };
+      }
     }
     e.preventDefault();
   });
@@ -2364,11 +2467,17 @@
       const srcBrush = brushSize / cropDisplayScale;
       stampAlongPath(lastStampPoint, { x: srcX, y: srcY }, srcBrush);
       lastStampPoint = { x: srcX, y: srcY };
+      if (currentStampOp) currentStampOp.points.push({ x: srcX / cropTarget.srcW, y: srcY / cropTarget.srcH });
     }
   });
   window.addEventListener('pointerup', () => {
     dragMode = null; dragStart = null;
     isPaintingStamp = false; lastStampPoint = null;
+    if (currentStampOp && cropTarget){
+      cropTarget.stampOps = cropTarget.stampOps || [];
+      cropTarget.stampOps.push(currentStampOp);
+    }
+    currentStampOp = null;
   });
 
   // ---- Floor plan export: crop to 1:1 (capped at 3000px), zip, download ----
@@ -2402,9 +2511,28 @@
         }
         usedNames.add(finalName.toLowerCase());
 
+        // For PDF-sourced sheets, re-render directly at the resolution this specific crop needs —
+        // sharper than downscaling from the fixed-cap preview render, especially on oversized
+        // sheets where that cap can't keep up with the whole page (see renderPdfPageForCrop).
+        // Any stamp edits are replayed onto the new render (see replayStampOps) rather than
+        // falling back to the lower-quality preview render just because stamps were used.
+        let sourceCanvas = item.canvas;
+        let sourceBox = box;
+        if (item.pdfRef && item.canvas && item.canvas.width && item.canvas.height){
+          try {
+            const boxFrac = { x: box.x / item.canvas.width, y: box.y / item.canvas.height, w: box.w / item.canvas.width, h: box.h / item.canvas.height };
+            const hiResCanvas = await renderPdfPageForCrop(item.pdfRef, item.pdfPageNum, boxFrac, outSize, FLOORPLAN_MARGIN);
+            replayStampOps(hiResCanvas, item.stampOps);
+            sourceCanvas = hiResCanvas;
+            sourceBox = { x: boxFrac.x * hiResCanvas.width, y: boxFrac.y * hiResCanvas.height, w: boxFrac.w * hiResCanvas.width, h: boxFrac.h * hiResCanvas.height };
+          } catch (err){
+            console.error('High-res re-render failed, falling back to preview render:', err);
+          }
+        }
+
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, outSize, outSize);
-        await drawContainedHQ(ctx, item.canvas, box, outSize, FLOORPLAN_MARGIN);
+        await drawContainedHQ(ctx, sourceCanvas, sourceBox, outSize, FLOORPLAN_MARGIN);
         let blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.95));
         if (blob) { blob = await embedJpegDpi(blob, fpExportPPI); zip.file(`${finalName}.jpg`, blob); }
         count++;
