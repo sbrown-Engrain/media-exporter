@@ -718,6 +718,19 @@
     const item = state.photos.find(p => p.id === id);
     if (item) item.label = val;
   }
+  function syncEditedBadge(card, edited, tooltip){
+    if (!card) return;
+    card.classList.toggle('edited', edited);
+    const thumbWrap = card.querySelector('.thumb-wrap');
+    if (!thumbWrap) return;
+    let badge = thumbWrap.querySelector('.thumb-edited-badge');
+    if (edited && !badge){
+      thumbWrap.insertAdjacentHTML('beforeend', `<div class="thumb-edited-badge" title="${escapeHtml(tooltip || 'Edited')}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Edited</div>`);
+    } else if (!edited && badge){
+      badge.remove();
+    }
+  }
+
   function updateVPos(id, val){
     const item = state.photos.find(p => p.id === id);
     if (!item) return;
@@ -726,6 +739,7 @@
     const card = grid.querySelector(`.card[data-id="${id}"]`);
     const img = card && card.querySelector('.thumb-wrap img');
     if (img) img.style.objectPosition = `center ${Math.round(item.vPos * 100)}%`;
+    syncEditedBadge(card, item.vPos !== 1, 'Crop position adjusted');
   }
   universalApplyBtn.addEventListener('click', () => {
     const vPos = Math.max(0, Math.min(100, parseInt(universalVpos.value, 10))) / 100;
@@ -789,8 +803,12 @@
       const imgStyle = isPortrait
         ? 'object-fit:contain;'
         : `object-position:center ${Math.round(vPos * 100)}%;`;
+      // Edited = the crop position has been moved off its bottom-anchored default. Portrait
+      // photos have no adjustable position (always a full, uncropped fit), so they're never
+      // flagged — there's nothing about them that could differ from a fresh upload.
+      const edited = needsVCrop && vPos !== 1;
       return `
-      <div class="card ${p.checked ? '' : 'unchecked'}" data-id="${p.id}">
+      <div class="card ${p.checked ? '' : 'unchecked'} ${edited ? 'edited' : ''}" data-id="${p.id}">
         <div class="thumb-wrap" style="${isPortrait ? 'background:#fff;' : ''}">
           <img src="${p.url}" style="${imgStyle} cursor:pointer;" alt="${escapeHtml(p.label)}" data-action="preview" data-id="${p.id}" />
           <label class="thumb-check">
@@ -799,6 +817,7 @@
           <div class="thumb-remove" data-action="remove" data-id="${p.id}" title="Remove">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </div>
+          ${edited ? `<div class="thumb-edited-badge" title="Crop position adjusted"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Edited</div>` : ''}
         </div>
         <div class="card-body">
           <input type="text" data-action="label" data-id="${p.id}" value="${escapeHtml(p.label)}" placeholder="Amenity label" />
@@ -930,6 +949,7 @@
       if (cardSlider) cardSlider.value = photoPreviewVpos.value;
       const cardImg = card.querySelector('.thumb-wrap img');
       if (cardImg) cardImg.style.objectPosition = `center ${photoPreviewVpos.value}%`;
+      syncEditedBadge(card, previewTarget.vPos !== 1, 'Crop position adjusted');
     }
   });
 
@@ -1427,7 +1447,10 @@
   }
   function uiUpdateLabel(id, val){
     const item = uiState.items.find(p => p.id === id);
-    if (item) item.label = val;
+    if (!item) return;
+    item.label = val;
+    const card = uiGrid.querySelector(`.card[data-id="${id}"]`);
+    syncEditedBadge(card, uiIsEdited(item), 'Room type set or name customized');
   }
   function uiUpdateRoomType(id, val){
     const item = uiState.items.find(p => p.id === id);
@@ -1472,6 +1495,15 @@
     return ROOM_TYPES.map(rt => `<option value="${rt.value}" ${rt.value === selected ? 'selected' : ''}>${rt.label}</option>`).join('');
   }
 
+  // Edited = the person has actively categorized this photo (moved off the arbitrary "Living
+  // Room" default every upload starts at) or manually typed a custom name that no longer matches
+  // what the room type + prefix would auto-generate. Either one means this item isn't just
+  // sitting at its untouched default anymore.
+  function uiIsEdited(item){
+    if (item.roomType !== 'living_room') return true;
+    return item.label !== uiComputedName(item);
+  }
+
   function uiRender(){
     const total = uiState.items.length;
     const checkedCount = uiState.items.filter(p => p.checked).length;
@@ -1490,8 +1522,10 @@
     uiEmptyState.style.display = 'none';
     uiGrid.style.display = 'grid';
 
-    uiGrid.innerHTML = uiState.items.map(p => `
-      <div class="card ${p.checked ? '' : 'unchecked'}" data-id="${p.id}">
+    uiGrid.innerHTML = uiState.items.map(p => {
+      const edited = uiIsEdited(p);
+      return `
+      <div class="card ${p.checked ? '' : 'unchecked'} ${edited ? 'edited' : ''}" data-id="${p.id}">
         <div class="thumb-wrap square" style="background:#fff;">
           <img src="${p.url}" style="object-fit:contain;" alt="${escapeHtml(p.label)}" />
           <label class="thumb-check">
@@ -1500,6 +1534,7 @@
           <div class="thumb-remove" data-action="uiremove" data-id="${p.id}" title="Remove">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </div>
+          ${edited ? `<div class="thumb-edited-badge" title="Room type set or name customized"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Edited</div>` : ''}
         </div>
         <div class="card-body">
           <div class="ui-original-name" title="Click to copy">
@@ -1516,7 +1551,8 @@
           </div>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     uiGrid.querySelectorAll('[data-action="uicheck"]').forEach(el => el.addEventListener('change', () => uiToggleChecked(el.dataset.id)));
     uiGrid.querySelectorAll('[data-action="uiremove"]').forEach(el => el.addEventListener('click', () => uiRemoveItem(el.dataset.id)));
