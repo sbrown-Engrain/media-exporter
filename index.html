@@ -154,8 +154,14 @@
     box-shadow:0 1px 3px rgba(15,23,42,.04); display:flex; flex-direction:column; transition:.15s;
   }
   .card.unchecked{opacity:.45;}
+  .card.edited{border-color:var(--indigo-500); box-shadow:0 0 0 1px var(--indigo-500), 0 1px 3px rgba(15,23,42,.04);}
   .thumb-wrap{position:relative; aspect-ratio:16/9; background:var(--slate-900); overflow:hidden;}
   .thumb-wrap img{width:100%; height:100%; object-fit:cover; object-position:center bottom; display:block;}
+  .thumb-edited-badge{
+    position:absolute; bottom:8px; left:8px; display:flex; align-items:center; gap:4px;
+    background:var(--indigo-600); color:#fff; font-size:10px; font-weight:700; letter-spacing:.02em;
+    padding:3px 8px 3px 6px; border-radius:999px; box-shadow:0 1px 3px rgba(0,0,0,.25);
+  }
   .thumb-check{
     position:absolute; top:8px; left:8px; width:20px; height:20px; border-radius:6px;
     background:rgba(255,255,255,.9); display:flex; align-items:center; justify-content:center; cursor:pointer;
@@ -2066,6 +2072,15 @@
     fpRender();
   });
 
+  // An item counts as "edited" once its crop differs from the untouched full-page default, or
+  // any stamp has been applied — either way, something about the export will differ from what a
+  // fresh upload would produce.
+  function fpIsEdited(item){
+    if (item.stampOps && item.stampOps.length) return true;
+    if (!item.box || !item.srcW || !item.srcH) return false;
+    return !(item.box.x === 0 && item.box.y === 0 && item.box.w === item.srcW && item.box.h === item.srcH);
+  }
+
   function fpRender(){
     const total = fpState.items.length;
     const checkedCount = fpState.items.filter(p => p.checked).length;
@@ -2094,8 +2109,9 @@
       const sparseNotice = p.sparseWarning
         ? `<div class="fp-sparse-warning" title="This page rendered with very little visible content — likely a failed image decode inside the PDF (common with CCITT/fax-compressed scans). Check Adjust Crop, and consider re-exporting the PDF with different image compression.">⚠ Page may be incomplete — check Adjust Crop</div>`
         : '';
+      const edited = fpIsEdited(p);
       return `
-        <div class="card ${p.checked ? '' : 'unchecked'}" data-id="${p.id}">
+        <div class="card ${p.checked ? '' : 'unchecked'} ${edited ? 'edited' : ''}" data-id="${p.id}">
           <div class="thumb-wrap square">
             ${preview}
             <label class="thumb-check">
@@ -2104,6 +2120,7 @@
             <div class="thumb-remove" data-action="fpremove" data-id="${p.id}" title="Remove">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </div>
+            ${edited ? `<div class="thumb-edited-badge" title="Crop or stamp edits applied"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Edited</div>` : ''}
           </div>
           <div class="card-body">
             ${sparseNotice}
@@ -2114,7 +2131,7 @@
             </div>
             <button class="btn crop-btn" data-action="fpcrop" data-id="${p.id}" ${p.loading || p.error ? 'disabled' : ''}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
-              Adjust Crop
+              ${edited ? 'Edit Crop' : 'Adjust Crop'}
             </button>
           </div>
         </div>
