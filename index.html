@@ -235,8 +235,9 @@
   .crop-box{position:absolute; border:2px solid #fff; box-shadow:0 0 0 9999px rgba(0,0,0,.6); cursor:move; transition:opacity .15s;}
   .crop-handle{
     position:absolute; width:18px; height:18px; background:#fff; border:2px solid var(--indigo-600);
-    border-radius:4px; right:2px; bottom:2px; cursor:nwse-resize; box-shadow:0 1px 4px rgba(0,0,0,.4);
+    border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,.4); z-index:2;
   }
+  .crop-handle-edge{width:18px; height:18px;}
   .crop-actions{display:flex; justify-content:flex-end; gap:8px;}
   .crop-actions .btn{width:auto; padding:9px 16px;}
 
@@ -568,7 +569,14 @@
     <div class="crop-stage" id="cropStage">
       <canvas id="cropStageCanvas"></canvas>
       <div class="crop-box" id="cropBox">
-        <div class="crop-handle" id="cropHandle"></div>
+        <div class="crop-handle crop-handle-corner" data-handle="nw" style="left:-2px; top:-2px; cursor:nwse-resize;"></div>
+        <div class="crop-handle crop-handle-edge" data-handle="n" style="left:50%; top:-2px; margin-left:-9px; cursor:ns-resize;"></div>
+        <div class="crop-handle crop-handle-corner" data-handle="ne" style="right:-2px; top:-2px; cursor:nesw-resize;"></div>
+        <div class="crop-handle crop-handle-edge" data-handle="e" style="right:-2px; top:50%; margin-top:-9px; cursor:ew-resize;"></div>
+        <div class="crop-handle crop-handle-corner" data-handle="se" style="right:-2px; bottom:-2px; cursor:nwse-resize;"></div>
+        <div class="crop-handle crop-handle-edge" data-handle="s" style="left:50%; bottom:-2px; margin-left:-9px; cursor:ns-resize;"></div>
+        <div class="crop-handle crop-handle-corner" data-handle="sw" style="left:-2px; bottom:-2px; cursor:nesw-resize;"></div>
+        <div class="crop-handle crop-handle-edge" data-handle="w" style="left:-2px; top:50%; margin-top:-9px; cursor:ew-resize;"></div>
       </div>
       <div class="sample-marker" id="sampleMarker"></div>
       <div class="brush-cursor" id="brushCursor"></div>
@@ -2150,7 +2158,7 @@
   const cropStage = document.getElementById('cropStage');
   const cropStageCanvas = document.getElementById('cropStageCanvas');
   const cropBoxEl = document.getElementById('cropBox');
-  const cropHandleEl = document.getElementById('cropHandle');
+  const cropHandleEls = document.querySelectorAll('.crop-handle');
   const modeBtns = document.querySelectorAll('.crop-modebtn');
   const stampModeBtn = document.getElementById('stampModeBtn');
   const brushSizeInput = document.getElementById('brushSize');
@@ -2167,6 +2175,7 @@
   let cropEntryStampOpsSnapshot = null; // stampOps at open time, restored on Cancel
   let dragMode = null; // 'move' | 'resize'
   let dragStart = null;
+  let resizeHandle = null; // which of the 8 handles is being dragged: n, s, e, w, nw, ne, sw, se
 
   let editMode = 'crop'; // 'crop' | 'sample' | 'stamp'
   let sampleCanvas = null;
@@ -2396,16 +2405,19 @@
 
   // ---- Crop box drag (move/resize) ----
   cropBoxEl.addEventListener('pointerdown', e => {
-    if (e.target === cropHandleEl) return;
+    if (e.target.classList.contains('crop-handle')) return;
     dragMode = 'move';
     dragStart = { px: e.clientX, py: e.clientY, box: { ...cropBoxState } };
     e.preventDefault();
   });
-  cropHandleEl.addEventListener('pointerdown', e => {
-    dragMode = 'resize';
-    dragStart = { px: e.clientX, py: e.clientY, box: { ...cropBoxState } };
-    e.stopPropagation();
-    e.preventDefault();
+  cropHandleEls.forEach(handleEl => {
+    handleEl.addEventListener('pointerdown', e => {
+      dragMode = 'resize';
+      resizeHandle = handleEl.dataset.handle;
+      dragStart = { px: e.clientX, py: e.clientY, box: { ...cropBoxState } };
+      e.stopPropagation();
+      e.preventDefault();
+    });
   });
 
   // ---- Sample/stamp interaction on the stage itself ----
@@ -2452,6 +2464,32 @@
   });
   cropStage.addEventListener('pointerleave', () => { brushCursor.style.display = 'none'; });
 
+  // Computes a new crop box for any of the 8 handles. Each handle moves only the edges its name
+  // implies (e.g. 'nw' moves the top and left edges; 's' moves only the bottom edge) — the
+  // opposite edge(s) stay fixed in place, same as any standard image crop tool.
+  function computeResizedBox(startBox, handle, dx, dy, maxW, maxH, minDim){
+    let { x, y, w, h } = startBox;
+    const right = x + w, bottom = y + h;
+
+    if (handle.includes('w')){
+      let newX = Math.max(0, Math.min(x + dx, right - minDim));
+      w = right - newX; x = newX;
+    }
+    if (handle.includes('e')){
+      let newRight = Math.min(maxW, Math.max(right + dx, x + minDim));
+      w = newRight - x;
+    }
+    if (handle.includes('n')){
+      let newY = Math.max(0, Math.min(y + dy, bottom - minDim));
+      h = bottom - newY; y = newY;
+    }
+    if (handle.includes('s')){
+      let newBottom = Math.min(maxH, Math.max(bottom + dy, y + minDim));
+      h = newBottom - y;
+    }
+    return { x, y, w, h };
+  }
+
   window.addEventListener('pointermove', e => {
     if (!cropTarget) return;
 
@@ -2466,14 +2504,12 @@
         y = Math.max(0, Math.min(cropTarget.srcH - dragStart.box.h, y));
         cropBoxState.x = x; cropBoxState.y = y;
       } else if (dragMode === 'resize'){
-        // Width and height resize independently — the selection can be any shape.
-        // It gets centered onto a 1:1 canvas (with padding on the shorter axis) at export/save time.
-        const maxW = cropTarget.srcW - dragStart.box.x;
-        const maxH = cropTarget.srcH - dragStart.box.y;
+        // The selection can be any shape — it gets centered onto a 1:1 canvas (with padding on
+        // the shorter axis) at export/save time. Any of the 8 handles can drive the resize.
         const minDim = 20;
-        const w = Math.max(minDim, Math.min(dragStart.box.w + dx, maxW));
-        const h = Math.max(minDim, Math.min(dragStart.box.h + dy, maxH));
-        cropBoxState.w = w; cropBoxState.h = h;
+        const resized = computeResizedBox(dragStart.box, resizeHandle, dx, dy, cropTarget.srcW, cropTarget.srcH, minDim);
+        cropBoxState.x = resized.x; cropBoxState.y = resized.y;
+        cropBoxState.w = resized.w; cropBoxState.h = resized.h;
       }
       syncCropBoxUI();
       return;
@@ -2488,7 +2524,7 @@
     }
   });
   window.addEventListener('pointerup', () => {
-    dragMode = null; dragStart = null;
+    dragMode = null; dragStart = null; resizeHandle = null;
     isPaintingStamp = false; lastStampPoint = null;
     if (currentStampOp && cropTarget){
       cropTarget.stampOps = cropTarget.stampOps || [];
