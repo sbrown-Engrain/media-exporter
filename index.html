@@ -307,7 +307,19 @@
         <p class="section-label">Export Size</p>
         <div class="ratio-badge">
           <span>Crop &amp; Export</span>
-          <span class="ratio-chip">16:9 · 1920×1080 · 300ppi</span>
+          <span class="ratio-chip" id="amenityRatioChip">16:9 · 1920×1080 · 300ppi</span>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-label">Output Resolution</p>
+        <div class="fmt-row">
+          <label class="fmt-pill on" id="amenityRes1080Pill">
+            <input type="radio" name="amenityResolution" id="amenityRes1080" checked /> 1920×1080
+          </label>
+          <label class="fmt-pill" id="amenityRes4kPill">
+            <input type="radio" name="amenityResolution" id="amenityRes4k" /> 3840×2160
+          </label>
         </div>
       </div>
 
@@ -510,6 +522,10 @@
               Clear
             </button>
           </div>
+          <button type="button" class="btn" id="fpRemoveSpacesBtn" style="margin-top:8px;" title="Strip spaces, periods, commas, and dashes from every label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="M4 12l3-3M4 12l3 3"/><path d="M20 12l-3-3M20 12l-3 3"/></svg>
+            Remove Spaces
+          </button>
         </div>
       </div>
       <!-- /floorplanSidebar -->
@@ -629,7 +645,7 @@
 <div class="modal-overlay hidden" id="photoPreviewOverlay">
   <div class="crop-modal" style="width:auto;">
     <h3>Preview — <span id="photoPreviewLabel"></span></h3>
-    <p class="hint">This is exactly how the photo will be exported — 1920×1080, 300ppi JPG.</p>
+    <p class="hint" id="photoPreviewHint">This is exactly how the photo will be exported — 1920×1080, 300ppi JPG.</p>
     <div class="preview-stage">
       <canvas id="photoPreviewCanvas"></canvas>
     </div>
@@ -665,6 +681,11 @@
   const fmtJpg = document.getElementById('fmtJpg');
   const jpgPill = document.getElementById('jpgPill');
   const toast = document.getElementById('toast');
+  const amenityRes1080 = document.getElementById('amenityRes1080');
+  const amenityRes4k = document.getElementById('amenityRes4k');
+  const amenityRes1080Pill = document.getElementById('amenityRes1080Pill');
+  const amenityRes4kPill = document.getElementById('amenityRes4kPill');
+  const amenityRatioChip = document.getElementById('amenityRatioChip');
 
   let toastTimer = null;
   function showToast(msg){
@@ -673,6 +694,21 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(()=> toast.classList.remove('show'), 3200);
   }
+
+  // Output size is a real pixel-dimension choice here (not metadata-only like the Floor
+  // Plans/Unit Images PPI toggle) — 4K is genuinely 4x the pixels of 1080p, same 16:9 aspect.
+  let amenityOutW = 1920, amenityOutH = 1080;
+  function amenitySyncResolution(){
+    const is4k = amenityRes4k.checked;
+    amenityRes1080Pill.classList.toggle('on', !is4k);
+    amenityRes4kPill.classList.toggle('on', is4k);
+    amenityOutW = is4k ? 3840 : 1920;
+    amenityOutH = is4k ? 2160 : 1080;
+    amenityRatioChip.textContent = `16:9 · ${amenityOutW}×${amenityOutH} · 300ppi`;
+    render();
+  }
+  amenityRes1080.addEventListener('change', amenitySyncResolution);
+  amenityRes4k.addEventListener('change', amenitySyncResolution);
 
   function deriveLabel(filename){
     // Preserve the original filename exactly (underscores, dashes, case, everything) so the
@@ -849,7 +885,7 @@
             <span>Bottom</span>
           </div>` : ''}
           <div class="card-meta">
-            <span>${p.w && p.h ? '1920x1080' : 'Loading…'}</span>
+            <span>${p.w && p.h ? `${amenityOutW}x${amenityOutH}` : 'Loading…'}</span>
             <span class="badge">${isPortrait ? 'Fit' : '16:9'}</span>
           </div>
           <button class="btn crop-btn" data-action="preview" data-id="${p.id}" ${p.w && p.h ? '' : 'disabled'}>
@@ -909,6 +945,7 @@
   // ---- Photo preview modal: verify the exact crop/fit before exporting ----
   const photoPreviewOverlay = document.getElementById('photoPreviewOverlay');
   const photoPreviewLabel = document.getElementById('photoPreviewLabel');
+  const photoPreviewHint = document.getElementById('photoPreviewHint');
   const photoPreviewCanvas = document.getElementById('photoPreviewCanvas');
   const photoPreviewVposControl = document.getElementById('photoPreviewVposControl');
   const photoPreviewVpos = document.getElementById('photoPreviewVpos');
@@ -926,6 +963,7 @@
     const needsVCrop = !isPortrait && (item.w / item.h <= 16 / 9);
     photoPreviewVposControl.style.display = needsVCrop ? 'flex' : 'none';
     photoPreviewVpos.value = Math.round((item.vPos != null ? item.vPos : 1) * 100);
+    photoPreviewHint.textContent = `This is exactly how the photo will be exported — ${amenityOutW}×${amenityOutH}, 300ppi JPG.`;
 
     photoPreviewOverlay.classList.remove('hidden');
     await renderPhotoPreview();
@@ -1054,7 +1092,7 @@
         const img = await loadImage(item.url);
         const naturalW = img.naturalWidth, naturalH = img.naturalHeight;
         const isPortrait = naturalH > naturalW;
-        const outW = 1920, outH = 1080;
+        const outW = amenityOutW, outH = amenityOutH;
         const canvas = document.createElement('canvas');
         canvas.width = outW; canvas.height = outH;
         const ctx = canvas.getContext('2d');
@@ -2132,11 +2170,8 @@
 
   async function fpAddItem(file, pdfInfo){
     const id = fpUid();
-    // Same strict naming rule as Unit Images (no spaces/periods/commas/dashes), applied the
-    // moment the label is derived so what's shown already matches what will export — not just a
-    // silent cleanup at export time.
-    const baseLabel = cleanName(deriveLabel(file.name)) || 'floorplan';
-    const label = pdfInfo && pdfInfo.multiPage ? `${baseLabel}_Page${pdfInfo.pageNum}` : baseLabel;
+    const baseLabel = deriveLabel(file.name);
+    const label = pdfInfo && pdfInfo.multiPage ? `${baseLabel} - Page ${pdfInfo.pageNum}` : baseLabel;
     const item = {
       id, file, label, checked: true,
       canvas: null, originalCanvas: null, stampHistory: [], stampOps: [], srcW: 0, srcH: 0,
@@ -2256,6 +2291,16 @@
     if (fpState.items.length && !confirm('Remove all floor plans from the queue?')) return;
     fpState.items = [];
     fpRender();
+  });
+  document.getElementById('fpRemoveSpacesBtn').addEventListener('click', () => {
+    if (fpState.items.length === 0) return;
+    let changed = 0;
+    fpState.items.forEach(p => {
+      const cleaned = cleanName(p.label);
+      if (cleaned && cleaned !== p.label){ p.label = cleaned; changed++; }
+    });
+    fpRender();
+    showToast(changed > 0 ? `Removed spaces/special characters from ${changed} label${changed === 1 ? '' : 's'}` : 'Labels are already clean');
   });
 
   // An item counts as "edited" once its crop differs from the untouched full-page default, or
@@ -2746,7 +2791,7 @@
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
 
-        let baseName = cleanName(sanitize(item.label)) || `floorplan_${count + 1}`;
+        let baseName = sanitize(item.label) || `floorplan_${count + 1}`;
         let finalName = baseName, dupe = 1;
         while (usedNames.has(finalName.toLowerCase())){
           dupe++; finalName = `${baseName}_${dupe}`;
