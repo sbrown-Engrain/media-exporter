@@ -64,6 +64,11 @@
   select:focus{border-color:var(--indigo-500); box-shadow:0 0 0 3px rgba(64,122,221,.15);}
   .card-body select{margin-bottom:2px;}
 
+  .ui-order-row{background:var(--slate-50); border:1px solid var(--slate-200); border-radius:8px; padding:8px; margin-bottom:8px;}
+  .ui-order-row-title{font-size:10px; font-weight:700; color:var(--slate-600); margin-bottom:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .ui-order-row select{margin-bottom:4px;}
+  .ui-order-row select:last-child{margin-bottom:0;}
+
   .ui-original-name{
     display:flex; align-items:center; justify-content:space-between; gap:6px; background:var(--slate-50);
     border:1px solid var(--slate-200); border-radius:6px; padding:5px 8px; cursor:pointer; transition:.15s;
@@ -363,6 +368,22 @@
           <div style="margin-top:10px;">
             <p class="section-label" style="margin-bottom:6px;">Property ID</p>
             <input type="text" id="uiPropertyId" placeholder="Auto-filled from CSV name" />
+          </div>
+          <div style="margin-top:10px;">
+            <p class="section-label" style="margin-bottom:6px;">Primary / Secondary Order</p>
+            <div class="fmt-row">
+              <label class="fmt-pill on" id="uiOrderAutoPill">
+                <input type="radio" name="uiOrderMode" id="uiOrderAuto" checked /> Automatic
+              </label>
+              <label class="fmt-pill" id="uiOrderCustomPill">
+                <input type="radio" name="uiOrderMode" id="uiOrderCustom" /> Custom
+              </label>
+            </div>
+            <div id="uiCustomOrderFields" style="display:none; margin-top:8px;">
+              <div id="uiCustomOrderRows"></div>
+              <p class="t2" id="uiCustomOrderEmpty" style="margin-top:6px; text-align:left; padding:0 2px; display:none;">Upload photos and match them to units first — a Primary/Secondary picker will appear here for each floor plan found.</p>
+              <p class="t2" style="margin-top:6px; text-align:left; padding:0 2px;">Overrides the standard priority order. Automatic uses Interior (Living Room &gt; Kitchen &gt; Bedroom &gt; Bathroom &gt; Closet &amp; Other) &gt; Exterior &gt; View Image &gt; Other.</p>
+            </div>
           </div>
           <button type="button" class="btn" id="uiConfigCsvBtn" style="margin-top:8px;" disabled>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -1105,9 +1126,32 @@
     return rt ? rt.suffix : 'Other';
   }
 
-  // Image naming must avoid spaces, periods, commas, and dashes entirely (not just escape them) —
-  // this applies to both the exported file name and whatever gets written into the config CSV.
-  function uiCleanName(str){
+  // ---- Primary/Secondary order: automatic (standard priority) by default, with a manual
+  // override — including a different custom order per floor plan, since different unit types
+  // often have different photo sets available (e.g. one floor plan shot as Bedroom+Kitchen,
+  // another as Kitchen+Bathroom). The actual per-plan row UI is built in uiRefreshCustomOrderRows
+  // further down, once csvUnitToPlan and uiGetGlobalPrimarySecondaryTypes exist. ----
+  const uiOrderAuto = document.getElementById('uiOrderAuto');
+  const uiOrderCustom = document.getElementById('uiOrderCustom');
+  const uiOrderAutoPill = document.getElementById('uiOrderAutoPill');
+  const uiOrderCustomPill = document.getElementById('uiOrderCustomPill');
+  const uiCustomOrderFields = document.getElementById('uiCustomOrderFields');
+
+  function uiSyncOrderMode(){
+    const isCustom = uiOrderCustom.checked;
+    uiOrderAutoPill.classList.toggle('on', !isCustom);
+    uiOrderCustomPill.classList.toggle('on', isCustom);
+    uiCustomOrderFields.style.display = isCustom ? 'block' : 'none';
+    if (isCustom) uiRefreshCustomOrderRows();
+  }
+  uiOrderAuto.addEventListener('change', uiSyncOrderMode);
+  uiOrderCustom.addEventListener('change', uiSyncOrderMode);
+
+  // Shared naming rule (Unit Images and Floor Plans): avoid spaces, periods, commas, and dashes
+  // entirely in exported names — not just escape them. Applied to the label as soon as it's
+  // derived from a filename, not just at export time, so what's shown in the UI already matches
+  // what will actually export.
+  function cleanName(str){
     return (str || '').replace(/[.,\-\s]+/g, '');
   }
 
@@ -1270,9 +1314,9 @@
         return { prefix: csvUnitToPlan.get(tokensLower[i]), matchedFrom: tokens[i], unitKey: tokensLower[i], planName: null };
       }
     }
-    const cleanedFull = uiCleanName(noExt).toLowerCase();
+    const cleanedFull = cleanName(noExt).toLowerCase();
     for (const planName of csvPlanNames){
-      const cleanedPlan = uiCleanName(planName).toLowerCase();
+      const cleanedPlan = cleanName(planName).toLowerCase();
       if (cleanedPlan && cleanedFull.includes(cleanedPlan)){
         return { prefix: planName, matchedFrom: planName, unitKey: null, planName: planName };
       }
@@ -1317,6 +1361,70 @@
     };
   }
 
+  // ---- Per-floor-plan custom order rows. Different unit types often have different photo sets
+  // available (one floor plan shot as Bedroom+Kitchen, another as Kitchen+Bathroom) — so Custom
+  // mode offers one Primary/Secondary picker per distinct floor plan found among matched photos,
+  // not just a single property-wide pair. ----
+  const uiCustomOrderRows = document.getElementById('uiCustomOrderRows');
+  const uiCustomOrderEmpty = document.getElementById('uiCustomOrderEmpty');
+  const customOrderByPlan = new Map(); // plan name (lowercase) -> {primary, secondary}
+
+  function uiGetItemPlanName(item){
+    if (item.matchedUnitKey) return csvUnitToPlan.get(item.matchedUnitKey) || null;
+    return item.matchedPlanName || null;
+  }
+
+  function uiRefreshCustomOrderRows(){
+    const matchedItems = uiState.items.filter(p => p.matchedUnitKey || p.matchedPlanName);
+    const itemsByPlan = new Map(); // plan key (lowercase) -> { displayName, items }
+    matchedItems.forEach(item => {
+      const planName = uiGetItemPlanName(item);
+      if (!planName) return;
+      const key = planName.toLowerCase();
+      if (!itemsByPlan.has(key)) itemsByPlan.set(key, { displayName: planName, items: [] });
+      itemsByPlan.get(key).items.push(item);
+    });
+
+    uiCustomOrderEmpty.style.display = itemsByPlan.size === 0 ? 'block' : 'none';
+
+    // Give any newly-seen plan a sensible starting point (whatever Automatic would pick for it),
+    // without disturbing a plan the person has already configured.
+    itemsByPlan.forEach((group, key) => {
+      if (!customOrderByPlan.has(key)){
+        const guess = uiGetGlobalPrimarySecondaryTypes(group.items);
+        customOrderByPlan.set(key, { primary: guess.primary || ROOM_TYPES[0].value, secondary: guess.secondary || '' });
+      }
+    });
+
+    uiCustomOrderRows.innerHTML = Array.from(itemsByPlan.entries()).map(([key, group]) => {
+      const cur = customOrderByPlan.get(key);
+      const primaryOptions = ROOM_TYPES.map(rt => `<option value="${rt.value}" ${rt.value === cur.primary ? 'selected' : ''}>${rt.label}</option>`).join('');
+      const secondaryOptions = '<option value="">None</option>' + ROOM_TYPES.map(rt => `<option value="${rt.value}" ${rt.value === cur.secondary ? 'selected' : ''}>${rt.label}</option>`).join('');
+      return `
+        <div class="ui-order-row">
+          <div class="ui-order-row-title" title="${escapeHtml(group.displayName)}">${escapeHtml(group.displayName)}</div>
+          <select data-action="uiorderprimary" data-plan-key="${escapeHtml(key)}">${primaryOptions}</select>
+          <select data-action="uiordersecondary" data-plan-key="${escapeHtml(key)}">${secondaryOptions}</select>
+        </div>
+      `;
+    }).join('');
+
+    uiCustomOrderRows.querySelectorAll('[data-action="uiorderprimary"]').forEach(el => {
+      el.addEventListener('change', () => {
+        const cur = customOrderByPlan.get(el.dataset.planKey) || {};
+        cur.primary = el.value;
+        customOrderByPlan.set(el.dataset.planKey, cur);
+      });
+    });
+    uiCustomOrderRows.querySelectorAll('[data-action="uiordersecondary"]').forEach(el => {
+      el.addEventListener('change', () => {
+        const cur = customOrderByPlan.get(el.dataset.planKey) || {};
+        cur.secondary = el.value || null;
+        customOrderByPlan.set(el.dataset.planKey, cur);
+      });
+    });
+  }
+
   uiConfigCsvBtn.addEventListener('click', () => {
     if (csvRawRows.length === 0){
       showToast('Upload the Unit Data CSV first.');
@@ -1328,10 +1436,37 @@
       return;
     }
 
-    const { primary, secondary } = uiGetGlobalPrimarySecondaryTypes(matchedItems);
-    if (!primary){
-      showToast('Could not determine an image type to use.');
-      return;
+    const isCustom = uiOrderCustom.checked;
+    let globalPrimary = null, globalSecondary = null;
+    if (!isCustom){
+      ({ primary: globalPrimary, secondary: globalSecondary } = uiGetGlobalPrimarySecondaryTypes(matchedItems));
+      if (!globalPrimary){
+        showToast('Could not determine an image type to use.');
+        return;
+      }
+    } else {
+      uiRefreshCustomOrderRows(); // make sure every current plan has a saved choice before exporting
+    }
+
+    function getOrderForItem(item){
+      if (!isCustom) return { primary: globalPrimary, secondary: globalSecondary };
+      const planName = uiGetItemPlanName(item);
+      const cfg = planName ? customOrderByPlan.get(planName.toLowerCase()) : null;
+      return cfg ? { primary: cfg.primary, secondary: cfg.secondary || null } : { primary: null, secondary: null };
+    }
+
+    if (isCustom){
+      let anyMissing = false;
+      customOrderByPlan.forEach((cfg, key) => {
+        const itemsForPlan = matchedItems.filter(item => {
+          const pn = uiGetItemPlanName(item);
+          return pn && pn.toLowerCase() === key;
+        });
+        if (itemsForPlan.length === 0) return; // no longer relevant, ignore
+        const present = new Set(itemsForPlan.map(i => i.roomType));
+        if (!present.has(cfg.primary)) anyMissing = true;
+      });
+      if (anyMissing) showToast("Heads up: at least one floor plan doesn't have a photo matching its chosen Primary type yet — that row will be blank.");
     }
 
     // Two lookup scopes: a specific-unit match only fills that one row; a floor-plan match fills
@@ -1340,7 +1475,9 @@
     const planImageMap = new Map();  // plan name (lowercase) -> {primary, secondary}
 
     matchedItems.forEach(item => {
-      const cleanedName = uiCleanName(sanitize(item.label));
+      const { primary, secondary } = getOrderForItem(item);
+      if (!primary) return;
+      const cleanedName = cleanName(sanitize(item.label));
       if (item.matchedUnitKey){
         if (!unitImageMap.has(item.matchedUnitKey)) unitImageMap.set(item.matchedUnitKey, {});
         const slot = unitImageMap.get(item.matchedUnitKey);
@@ -1388,7 +1525,7 @@
     });
 
     const csvText = Papa.unparse({ fields: outFields, data: outRows });
-    const propId = uiCleanName(sanitize(uiPropertyId.value)) || 'Property';
+    const propId = cleanName(sanitize(uiPropertyId.value)) || 'Property';
     const filename = `${propId}_config-unit-images.csv`;
     const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -1403,7 +1540,7 @@
   function uiComputedName(item, roomTypeOverride){
     const roomType = roomTypeOverride || item.roomType;
     const rawPrefix = item.autoPrefix || uiFloorPlanName.value;
-    const prefix = uiCleanName(sanitize(rawPrefix)) || 'Unit';
+    const prefix = cleanName(sanitize(rawPrefix)) || 'Unit';
     return `${prefix}_${roomSuffix(roomType)}`;
   }
 
@@ -1559,6 +1696,8 @@
     uiGrid.querySelectorAll('[data-action="uilabel"]').forEach(el => el.addEventListener('input', () => uiUpdateLabel(el.dataset.id, el.value)));
     uiGrid.querySelectorAll('[data-action="uiroomtype"]').forEach(el => el.addEventListener('change', () => uiUpdateRoomType(el.dataset.id, el.value)));
     uiGrid.querySelectorAll('[data-action="uicopyname"]').forEach(el => el.addEventListener('click', () => uiCopyOriginalName(el.dataset.id)));
+
+    if (uiOrderCustom.checked) uiRefreshCustomOrderRows();
   }
 
   // ---- Unit image export: fit (no crop) into 1:1, centered, even white space, same settings as floor plans ----
@@ -1583,7 +1722,7 @@
         canvas.width = outSize; canvas.height = outSize;
         const ctx = canvas.getContext('2d');
 
-        let baseName = sanitize(item.label) || `unit_${count + 1}`;
+        let baseName = cleanName(sanitize(item.label)) || `unit_${count + 1}`;
         let finalName = baseName, dupe = 1;
         while (usedNames.has(finalName.toLowerCase())){
           dupe++; finalName = `${baseName}_${dupe}`;
@@ -1993,8 +2132,11 @@
 
   async function fpAddItem(file, pdfInfo){
     const id = fpUid();
-    const baseLabel = deriveLabel(file.name);
-    const label = pdfInfo && pdfInfo.multiPage ? `${baseLabel} - Page ${pdfInfo.pageNum}` : baseLabel;
+    // Same strict naming rule as Unit Images (no spaces/periods/commas/dashes), applied the
+    // moment the label is derived so what's shown already matches what will export — not just a
+    // silent cleanup at export time.
+    const baseLabel = cleanName(deriveLabel(file.name)) || 'floorplan';
+    const label = pdfInfo && pdfInfo.multiPage ? `${baseLabel}_Page${pdfInfo.pageNum}` : baseLabel;
     const item = {
       id, file, label, checked: true,
       canvas: null, originalCanvas: null, stampHistory: [], stampOps: [], srcW: 0, srcH: 0,
@@ -2221,7 +2363,7 @@
   let isPaintingStamp = false;
   let lastStampPoint = null; // source-px space
 
-  function openCropModal(id){
+  async function openCropModal(id){
     const item = fpState.items.find(p => p.id === id);
     if (!item || !item.canvas) return;
     cropTarget = item;
@@ -2240,7 +2382,7 @@
     cropStage.style.height = dispH + 'px';
     cropStageCanvas.width = dispW;
     cropStageCanvas.height = dispH;
-    refreshDisplayFromSource();
+    await refreshDisplayFromSource();
 
     setEditMode('crop');
     sampleCanvas = null;
@@ -2252,11 +2394,22 @@
     cropModalOverlay.classList.remove('hidden');
   }
 
-  function refreshDisplayFromSource(){
+  // Uses the same pica-based high-quality resize as the actual export, so what you see while
+  // adjusting a crop matches what you'll get — not a fast/rough approximation. This only runs at
+  // a few discrete moments (opening the editor, undo, reset), never continuously while dragging,
+  // so the extra cost of pica over a plain drawImage is not felt as lag.
+  async function refreshDisplayFromSource(){
     if (!cropTarget) return;
     const ctx = cropStageCanvas.getContext('2d');
     ctx.clearRect(0, 0, cropStageCanvas.width, cropStageCanvas.height);
-    ctx.drawImage(cropTarget.canvas, 0, 0, cropTarget.srcW, cropTarget.srcH, 0, 0, cropStageCanvas.width, cropStageCanvas.height);
+    try {
+      await hqDrawImage(ctx, cropTarget.canvas, 0, 0, cropTarget.srcW, cropTarget.srcH, 0, 0, cropStageCanvas.width, cropStageCanvas.height);
+    } catch (err){
+      console.error('High-quality preview refresh failed, falling back to a plain resize:', err);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(cropTarget.canvas, 0, 0, cropTarget.srcW, cropTarget.srcH, 0, 0, cropStageCanvas.width, cropStageCanvas.height);
+    }
   }
 
   function syncCropBoxUI(){
@@ -2593,7 +2746,7 @@
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
 
-        let baseName = sanitize(item.label) || `floorplan_${count + 1}`;
+        let baseName = cleanName(sanitize(item.label)) || `floorplan_${count + 1}`;
         let finalName = baseName, dupe = 1;
         while (usedNames.has(finalName.toLowerCase())){
           dupe++; finalName = `${baseName}_${dupe}`;
