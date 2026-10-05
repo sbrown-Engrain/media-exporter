@@ -117,6 +117,9 @@
   }
   .fmt-pill.on{border-color:var(--indigo-600); background:rgba(238,243,251,.4); color:var(--indigo-900,#0f2a57);}
   .fmt-pill input{accent-color:var(--indigo-600); width:14px; height:14px;}
+  .fmt-row-stack{flex-direction:column; gap:6px;}
+  .fmt-pill .fmt-hint{margin-left:auto; font-size:10px; font-weight:700; letter-spacing:.04em; color:var(--slate-400);}
+  .fmt-pill.on .fmt-hint{color:var(--indigo-600);}
 
   .page-select-row{
     width:100%; flex:none; justify-content:flex-start; box-sizing:border-box;
@@ -313,12 +316,15 @@
 
       <div class="section">
         <p class="section-label">Output Resolution</p>
-        <div class="fmt-row">
+        <div class="fmt-row fmt-row-stack">
           <label class="fmt-pill on" id="amenityRes1080Pill">
-            <input type="radio" name="amenityResolution" id="amenityRes1080" checked /> 1920×1080
+            <input type="radio" name="amenityResolution" id="amenityRes1080" checked /> 1920×1080 <span class="fmt-hint">16:9</span>
           </label>
           <label class="fmt-pill" id="amenityRes4kPill">
-            <input type="radio" name="amenityResolution" id="amenityRes4k" /> 3840×2160
+            <input type="radio" name="amenityResolution" id="amenityRes4k" /> 3840×2160 <span class="fmt-hint">16:9</span>
+          </label>
+          <label class="fmt-pill" id="amenityRes2048Pill">
+            <input type="radio" name="amenityResolution" id="amenityRes2048" /> 2048×1536 <span class="fmt-hint">4:3</span>
           </label>
         </div>
       </div>
@@ -344,6 +350,18 @@
           Apply to All Photos
         </button>
         <p class="t2" style="margin-top:6px; text-align:left; padding:0 2px;">Sets the crop position on every landscape photo that has one. Portrait photos aren't affected.</p>
+        <div id="universalHBlock" style="display:none; margin-top:14px;">
+          <p class="section-label" style="margin-bottom:8px;">Left / Right (4:3 only)</p>
+          <div class="vpos-control">
+            <span>Left</span>
+            <input type="range" id="universalHpos" min="0" max="100" value="50" />
+            <span>Right</span>
+          </div>
+          <button class="btn" id="universalApplyHBtn" style="margin-top:8px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+            Apply Left/Right to All
+          </button>
+        </div>
       </div>
 
       <div class="section" id="actionsSection" style="display:none;">
@@ -490,6 +508,18 @@
         </div>
 
         <div class="section">
+          <p class="section-label">Output Size</p>
+          <div class="fmt-row">
+            <label class="fmt-pill on" id="fpSize900Pill">
+              <input type="radio" name="fpSize" id="fpSize900" checked /> 900×900
+            </label>
+            <label class="fmt-pill" id="fpSize1800Pill">
+              <input type="radio" name="fpSize" id="fpSize1800" /> 1800×1800
+            </label>
+          </div>
+        </div>
+
+        <div class="section">
           <p class="section-label">Resolution</p>
           <div class="fmt-row">
             <label class="fmt-pill on" id="fpRes300Pill">
@@ -560,7 +590,7 @@
       <div class="empty" id="emptyState">
         <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
         <p class="t1">No amenity photos yet</p>
-        <p class="t2">Drag and drop images anywhere, or use the Upload Amenity Photos panel to add them. Each photo will be cropped to 16:9 and labeled from its filename.</p>
+        <p class="t2">Drag and drop images anywhere, or use the Upload Amenity Photos panel to add them. Each photo will be cropped to your selected output size (16:9 or 4:3) and labeled from its filename.</p>
       </div>
       <div class="grid" id="grid" style="display:none;"></div>
     </div>
@@ -654,6 +684,11 @@
       <input type="range" id="photoPreviewVpos" min="0" max="100" />
       <span>Bottom</span>
     </div>
+    <div class="vpos-control" id="photoPreviewHposControl" style="display:none;">
+      <span>Left</span>
+      <input type="range" id="photoPreviewHpos" min="0" max="100" />
+      <span>Right</span>
+    </div>
     <div class="crop-actions">
       <button class="btn btn-primary" id="photoPreviewCloseBtn" style="width:auto;">Close</button>
     </div>
@@ -674,6 +709,9 @@
   const universalSection = document.getElementById('universalSection');
   const universalVpos = document.getElementById('universalVpos');
   const universalApplyBtn = document.getElementById('universalApplyBtn');
+  const universalHBlock = document.getElementById('universalHBlock');
+  const universalHpos = document.getElementById('universalHpos');
+  const universalApplyHBtn = document.getElementById('universalApplyHBtn');
   const selCount = document.getElementById('selCount');
   const totalCount = document.getElementById('totalCount');
   const exportBtn = document.getElementById('exportBtn');
@@ -685,6 +723,8 @@
   const amenityRes4k = document.getElementById('amenityRes4k');
   const amenityRes1080Pill = document.getElementById('amenityRes1080Pill');
   const amenityRes4kPill = document.getElementById('amenityRes4kPill');
+  const amenityRes2048 = document.getElementById('amenityRes2048');
+  const amenityRes2048Pill = document.getElementById('amenityRes2048Pill');
   const amenityRatioChip = document.getElementById('amenityRatioChip');
 
   let toastTimer = null;
@@ -696,19 +736,67 @@
   }
 
   // Output size is a real pixel-dimension choice here (not metadata-only like the Floor
-  // Plans/Unit Images PPI toggle) — 4K is genuinely 4x the pixels of 1080p, same 16:9 aspect.
-  let amenityOutW = 1920, amenityOutH = 1080;
+  // Plans/Unit Images PPI toggle). Two options are 16:9 (1080p and 4K); the third, 2048x1536, is
+  // 4:3 — a genuinely different shape, so everything that crops, previews, or decides which
+  // photos get a vertical-position slider reads amenityAspect instead of assuming 16:9.
+  //
+  // Two per-option behaviors live in this table so they follow the selection instead of being
+  // scattered conditionals:
+  //   hPos            - offer a left/right crop position for photos wider than the output (4:3 only;
+  //                     16:9 options always crop those centered, exactly as before)
+  //   fitPreviewHeight - also cap the preview modal by available screen height (the taller 4:3
+  //                     preview needs it; 16:9 keeps its original sizing)
+  const AMENITY_SIZES = {
+    p1080: { w: 1920, h: 1080, ratio: '16:9', hPos: false, fitPreviewHeight: false },
+    p4k:   { w: 3840, h: 2160, ratio: '16:9', hPos: false, fitPreviewHeight: false },
+    p2048: { w: 2048, h: 1536, ratio: '4:3',  hPos: true,  fitPreviewHeight: true }
+  };
+  let amenityOutW = 1920, amenityOutH = 1080, amenityRatioLabel = '16:9';
+  let amenityAspect = 1920 / 1080;
+  let amenityHPosEnabled = false, amenityFitPreviewHeight = false;
   function amenitySyncResolution(){
-    const is4k = amenityRes4k.checked;
-    amenityRes1080Pill.classList.toggle('on', !is4k);
-    amenityRes4kPill.classList.toggle('on', is4k);
-    amenityOutW = is4k ? 3840 : 1920;
-    amenityOutH = is4k ? 2160 : 1080;
-    amenityRatioChip.textContent = `16:9 · ${amenityOutW}×${amenityOutH} · 300ppi`;
+    const key = amenityRes4k.checked ? 'p4k' : amenityRes2048.checked ? 'p2048' : 'p1080';
+    amenityRes1080Pill.classList.toggle('on', key === 'p1080');
+    amenityRes4kPill.classList.toggle('on', key === 'p4k');
+    amenityRes2048Pill.classList.toggle('on', key === 'p2048');
+    const size = AMENITY_SIZES[key];
+    amenityOutW = size.w;
+    amenityOutH = size.h;
+    amenityRatioLabel = size.ratio;
+    amenityAspect = size.w / size.h;
+    amenityHPosEnabled = size.hPos;
+    amenityFitPreviewHeight = size.fitPreviewHeight;
+    amenityRatioChip.textContent = `${size.ratio} · ${amenityOutW}×${amenityOutH} · 300ppi`;
     render();
   }
   amenityRes1080.addEventListener('change', amenitySyncResolution);
   amenityRes4k.addEventListener('change', amenitySyncResolution);
+  amenityRes2048.addEventListener('change', amenitySyncResolution);
+
+  // What kind of crop adjustment, if any, applies to this photo under the selected output:
+  //   'v'  - narrower than the output, so top/bottom is cropped (vertical slider)
+  //   'h'  - wider than the output, so the sides are cropped (horizontal slider, 4:3 only)
+  //   null - portrait (always a full uncropped fit), not loaded yet, or a wide photo under an
+  //          option with no horizontal control (those stay centered)
+  function amenityCropKind(p){
+    if (!p.w || !p.h) return null;
+    if (p.h > p.w) return null;
+    if (p.w / p.h <= amenityAspect) return 'v';
+    return amenityHPosEnabled ? 'h' : null;
+  }
+  // Horizontal position actually applied: the stored value only counts where the control exists.
+  // Everywhere else it's centered, so a position set at 4:3 never leaks into a 16:9 export.
+  function amenityHPosOf(p){
+    return amenityHPosEnabled && p.hPos != null ? p.hPos : 0.5;
+  }
+  // Edited = the adjustable position has been moved off its default (bottom-anchored vertically,
+  // centered horizontally). Photos with nothing adjustable are never flagged.
+  function amenityIsEdited(p){
+    const kind = amenityCropKind(p);
+    if (kind === 'v') return (p.vPos != null ? p.vPos : 1) !== 1;
+    if (kind === 'h') return (p.hPos != null ? p.hPos : 0.5) !== 0.5;
+    return false;
+  }
 
   function deriveLabel(filename){
     // Preserve the original filename exactly (underscores, dashes, case, everything) so the
@@ -738,7 +826,7 @@
       const url = URL.createObjectURL(file);
       const img = new Image();
       const id = uid();
-      const item = { id, file, url, label: deriveLabel(file.name), checked: true, w: 0, h: 0, vPos: 1 };
+      const item = { id, file, url, label: deriveLabel(file.name), checked: true, w: 0, h: 0, vPos: 1, hPos: 0.5 };
       state.photos.push(item);
       img.onload = () => { item.w = img.naturalWidth; item.h = img.naturalHeight; render(); };
       img.src = url;
@@ -796,18 +884,39 @@
     const card = grid.querySelector(`.card[data-id="${id}"]`);
     const img = card && card.querySelector('.thumb-wrap img');
     if (img) img.style.objectPosition = `center ${Math.round(item.vPos * 100)}%`;
-    syncEditedBadge(card, item.vPos !== 1, 'Crop position adjusted');
+    syncEditedBadge(card, amenityIsEdited(item), 'Crop position adjusted');
+  }
+  function updateHPos(id, val){
+    const item = state.photos.find(p => p.id === id);
+    if (!item) return;
+    item.hPos = Math.max(0, Math.min(100, parseInt(val, 10))) / 100;
+    // Same smooth live update as the vertical slider: patch the thumbnail directly, no full re-render.
+    const card = grid.querySelector(`.card[data-id="${id}"]`);
+    const img = card && card.querySelector('.thumb-wrap img');
+    if (img) img.style.objectPosition = `${Math.round(item.hPos * 100)}% center`;
+    syncEditedBadge(card, amenityIsEdited(item), 'Crop position adjusted');
   }
   universalApplyBtn.addEventListener('click', () => {
     const vPos = Math.max(0, Math.min(100, parseInt(universalVpos.value, 10))) / 100;
     let count = 0;
     state.photos.forEach(p => {
-      const isPortrait = p.w && p.h && p.h > p.w;
-      const needsVCrop = p.w && p.h && !isPortrait && (p.w / p.h <= 16 / 9);
-      if (needsVCrop){ p.vPos = vPos; count++; }
+      if (amenityCropKind(p) === 'v'){ p.vPos = vPos; count++; }
     });
     if (count === 0){
       showToast('No landscape photos to apply this to yet.');
+      return;
+    }
+    render();
+    showToast(`Applied position to ${count} photo${count === 1 ? '' : 's'}`);
+  });
+  universalApplyHBtn.addEventListener('click', () => {
+    const hPos = Math.max(0, Math.min(100, parseInt(universalHpos.value, 10))) / 100;
+    let count = 0;
+    state.photos.forEach(p => {
+      if (amenityCropKind(p) === 'h'){ p.hPos = hPos; count++; }
+    });
+    if (count === 0){
+      showToast('No photos wider than 4:3 to apply this to yet.');
       return;
     }
     render();
@@ -843,6 +952,7 @@
     exportBtn.disabled = checkedCount === 0;
     actionsSection.style.display = total > 0 ? 'block' : 'none';
     universalSection.style.display = total > 0 ? 'block' : 'none';
+    universalHBlock.style.display = amenityHPosEnabled ? 'block' : 'none';
 
     if (total === 0){
       emptyState.style.display = 'flex';
@@ -855,18 +965,22 @@
 
     grid.innerHTML = state.photos.map(p => {
       const vPos = p.vPos != null ? p.vPos : 1;
+      const hPos = p.hPos != null ? p.hPos : 0.5;
       const isPortrait = p.w && p.h && p.h > p.w; // taller than wide — fit in full, don't crop away most of it
-      const needsVCrop = p.w && p.h && !isPortrait && (p.w / p.h <= 16 / 9); // landscape but narrower than 16:9
+      const kind = amenityCropKind(p);
+      const needsVCrop = kind === 'v'; // narrower than the selected output: top/bottom is cropped
+      const needsHCrop = kind === 'h'; // wider than the selected output, where a left/right control exists (4:3 only)
       const imgStyle = isPortrait
         ? 'object-fit:contain;'
-        : `object-position:center ${Math.round(vPos * 100)}%;`;
-      // Edited = the crop position has been moved off its bottom-anchored default. Portrait
-      // photos have no adjustable position (always a full, uncropped fit), so they're never
-      // flagged — there's nothing about them that could differ from a fresh upload.
-      const edited = needsVCrop && vPos !== 1;
+        : needsHCrop
+          ? `object-position:${Math.round(hPos * 100)}% center;`
+          : `object-position:center ${Math.round(vPos * 100)}%;`;
+      // Edited = the adjustable crop position has been moved off its default. Portrait photos
+      // (always a full, uncropped fit) and photos with nothing adjustable are never flagged.
+      const edited = amenityIsEdited(p);
       return `
       <div class="card ${p.checked ? '' : 'unchecked'} ${edited ? 'edited' : ''}" data-id="${p.id}">
-        <div class="thumb-wrap" style="${isPortrait ? 'background:#fff;' : ''}">
+        <div class="thumb-wrap" style="aspect-ratio:${amenityOutW}/${amenityOutH};${isPortrait ? ' background:#fff;' : ''}">
           <img src="${p.url}" style="${imgStyle} cursor:pointer;" alt="${escapeHtml(p.label)}" data-action="preview" data-id="${p.id}" />
           <label class="thumb-check">
             <input type="checkbox" data-action="check" data-id="${p.id}" ${p.checked ? 'checked' : ''} />
@@ -884,9 +998,15 @@
             <input type="range" data-action="vpos" data-id="${p.id}" min="0" max="100" value="${Math.round(vPos * 100)}" />
             <span>Bottom</span>
           </div>` : ''}
+          ${needsHCrop ? `
+          <div class="vpos-control">
+            <span>Left</span>
+            <input type="range" data-action="hpos" data-id="${p.id}" min="0" max="100" value="${Math.round(hPos * 100)}" />
+            <span>Right</span>
+          </div>` : ''}
           <div class="card-meta">
             <span>${p.w && p.h ? `${amenityOutW}x${amenityOutH}` : 'Loading…'}</span>
-            <span class="badge">${isPortrait ? 'Fit' : '16:9'}</span>
+            <span class="badge">${isPortrait ? 'Fit' : amenityRatioLabel}</span>
           </div>
           <button class="btn crop-btn" data-action="preview" data-id="${p.id}" ${p.w && p.h ? '' : 'disabled'}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -909,6 +1029,9 @@
     grid.querySelectorAll('[data-action="vpos"]').forEach(el => {
       el.addEventListener('input', () => updateVPos(el.dataset.id, el.value));
     });
+    grid.querySelectorAll('[data-action="hpos"]').forEach(el => {
+      el.addEventListener('input', () => updateHPos(el.dataset.id, el.value));
+    });
     grid.querySelectorAll('[data-action="preview"]').forEach(el => {
       el.addEventListener('click', () => openPhotoPreview(el.dataset.id));
     });
@@ -920,7 +1043,7 @@
     return d.innerHTML;
   }
 
-  // ---- Export: crop to 16:9 cover-fit @ 1920x1080, zip, download ----
+  // ---- Export: cover-fit crop to the selected output size (16:9 or 4:3), zip, download ----
   function loadImage(src){
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -931,13 +1054,15 @@
     });
   }
 
-  function cropRectFor16x9(w, h, vPos = 1){
-    const target = 16/9;
+  // Cover-crop rectangle for any target aspect ratio (16:9 or 4:3 here). A source wider than the
+  // target loses its sides, positioned by hPos (default centered); a source narrower than (or
+  // equal to) the target loses top/bottom, positioned by vPos (0 = show top, 1 = show bottom).
+  function cropRectForAspect(w, h, target, vPos = 1, hPos = 0.5){
     let sx, sy, sw, sh;
     if (w / h > target){
-      sh = h; sw = h * target; sx = (w - sw) / 2; sy = 0;
+      sh = h; sw = h * target; sx = (w - sw) * hPos; sy = 0; // hPos: 0 = show left, 1 = show right, 0.5 = centered
     } else {
-      sw = w; sh = w / target; sx = 0; sy = (h - sh) * vPos; // vPos: 0 = top, 1 = bottom, adjustable
+      sw = w; sh = w / target; sx = 0; sy = (h - sh) * vPos;
     }
     return { sx, sy, sw, sh };
   }
@@ -949,6 +1074,8 @@
   const photoPreviewCanvas = document.getElementById('photoPreviewCanvas');
   const photoPreviewVposControl = document.getElementById('photoPreviewVposControl');
   const photoPreviewVpos = document.getElementById('photoPreviewVpos');
+  const photoPreviewHposControl = document.getElementById('photoPreviewHposControl');
+  const photoPreviewHpos = document.getElementById('photoPreviewHpos');
   const photoPreviewCloseBtn = document.getElementById('photoPreviewCloseBtn');
 
   let previewTarget = null;
@@ -959,10 +1086,11 @@
     previewTarget = item;
     photoPreviewLabel.textContent = item.label || 'Untitled';
 
-    const isPortrait = item.h > item.w;
-    const needsVCrop = !isPortrait && (item.w / item.h <= 16 / 9);
-    photoPreviewVposControl.style.display = needsVCrop ? 'flex' : 'none';
+    const kind = amenityCropKind(item);
+    photoPreviewVposControl.style.display = kind === 'v' ? 'flex' : 'none';
+    photoPreviewHposControl.style.display = kind === 'h' ? 'flex' : 'none';
     photoPreviewVpos.value = Math.round((item.vPos != null ? item.vPos : 1) * 100);
+    photoPreviewHpos.value = Math.round((item.hPos != null ? item.hPos : 0.5) * 100);
     photoPreviewHint.textContent = `This is exactly how the photo will be exported — ${amenityOutW}×${amenityOutH}, 300ppi JPG.`;
 
     photoPreviewOverlay.classList.remove('hidden');
@@ -973,7 +1101,17 @@
     if (!previewTarget) return;
     const img = await loadImage(previewTarget.url);
     const maxW = Math.min(window.innerWidth * 0.82, 960);
-    const dispW = Math.round(maxW), dispH = Math.round(maxW * 9 / 16);
+    let dispW, dispH;
+    if (amenityFitPreviewHeight){
+      // 4:3 is taller, so it's also capped by available screen height to stay fully visible.
+      const maxH = window.innerHeight * 0.62;
+      dispW = Math.round(Math.min(maxW, maxH * amenityAspect));
+      dispH = Math.round(dispW / amenityAspect);
+    } else {
+      // 16:9 options: sizing exactly as it was before 4:3 existed.
+      dispW = Math.round(maxW);
+      dispH = Math.round(maxW * 9 / 16);
+    }
     photoPreviewCanvas.width = dispW;
     photoPreviewCanvas.height = dispH;
     const ctx = photoPreviewCanvas.getContext('2d');
@@ -983,7 +1121,7 @@
     ctx.fillRect(0, 0, dispW, dispH);
 
     // Same logic as the real export: portrait photos are fit (full height, pillarboxed),
-    // everything else is cover-cropped to 16:9 at the current vertical position.
+    // everything else is cover-cropped to the selected output shape at the current vertical position.
     const isPortrait = img.naturalHeight > img.naturalWidth;
     if (isPortrait){
       const dh = dispH;
@@ -992,7 +1130,7 @@
       ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, dx, 0, dw, dh);
     } else {
       const vPos = previewTarget.vPos != null ? previewTarget.vPos : 1;
-      const { sx, sy, sw, sh } = cropRectFor16x9(img.naturalWidth, img.naturalHeight, vPos);
+      const { sx, sy, sw, sh } = cropRectForAspect(img.naturalWidth, img.naturalHeight, amenityAspect, vPos, amenityHPosOf(previewTarget));
       ctx.drawImage(img, sx, sy, sw, sh, 0, 0, dispW, dispH);
     }
   }
@@ -1008,7 +1146,22 @@
       if (cardSlider) cardSlider.value = photoPreviewVpos.value;
       const cardImg = card.querySelector('.thumb-wrap img');
       if (cardImg) cardImg.style.objectPosition = `center ${photoPreviewVpos.value}%`;
-      syncEditedBadge(card, previewTarget.vPos !== 1, 'Crop position adjusted');
+      syncEditedBadge(card, amenityIsEdited(previewTarget), 'Crop position adjusted');
+    }
+  });
+
+  photoPreviewHpos.addEventListener('input', () => {
+    if (!previewTarget) return;
+    previewTarget.hPos = parseInt(photoPreviewHpos.value, 10) / 100;
+    renderPhotoPreview();
+    // Keep the card behind the modal in sync, so closing the preview shows the same result.
+    const card = grid.querySelector(`.card[data-id="${previewTarget.id}"]`);
+    if (card){
+      const cardSlider = card.querySelector('[data-action="hpos"]');
+      if (cardSlider) cardSlider.value = photoPreviewHpos.value;
+      const cardImg = card.querySelector('.thumb-wrap img');
+      if (cardImg) cardImg.style.objectPosition = `${photoPreviewHpos.value}% center`;
+      syncEditedBadge(card, amenityIsEdited(previewTarget), 'Crop position adjusted');
     }
   });
 
@@ -1115,7 +1268,7 @@
             const dx = (outW - dw) / 2;
             await hqDrawImage(ctx, img, 0, 0, naturalW, naturalH, dx, 0, dw, dh);
           } else {
-            const { sx, sy, sw, sh } = cropRectFor16x9(naturalW, naturalH, item.vPos != null ? item.vPos : 1);
+            const { sx, sy, sw, sh } = cropRectForAspect(naturalW, naturalH, amenityAspect, item.vPos != null ? item.vPos : 1, amenityHPosOf(item));
             await hqDrawImage(ctx, img, sx, sy, sw, sh, 0, 0, outW, outH);
           }
         }
@@ -1811,23 +1964,41 @@
   const fpRes300Pill = document.getElementById('fpRes300Pill');
   const fpRes1200Pill = document.getElementById('fpRes1200Pill');
   const fpRatioChip = document.getElementById('fpRatioChip');
+  const fpSize900 = document.getElementById('fpSize900');
+  const fpSize1800 = document.getElementById('fpSize1800');
+  const fpSize900Pill = document.getElementById('fpSize900Pill');
+  const fpSize1800Pill = document.getElementById('fpSize1800Pill');
 
-  const FLOORPLAN_OUT_SIZE = 900; // pixel dimensions stay fixed regardless of PPI selection — PPI is a print-size metadata tag only, matching how Lightroom's export works
+  // Two independent choices: pixel size (900 default, or 1800) and PPI. PPI is a print-size
+  // metadata tag only and never changes pixel dimensions, matching how Lightroom's export works;
+  // size is the real pixel dimension and is what actually gives dense sheets more room.
+  let fpOutSize = 900;
   const FLOORPLAN_BASE_PPI = 300;
   let fpExportPPI = FLOORPLAN_BASE_PPI;
 
   function fpOutSizeFor(ppi){
-    return FLOORPLAN_OUT_SIZE;
+    return fpOutSize;
   }
 
   function fpSyncResPills(){
     fpRes300Pill.classList.toggle('on', fpRes300.checked);
     fpRes1200Pill.classList.toggle('on', fpRes1200.checked);
     fpExportPPI = fpRes1200.checked ? 1200 : 300;
-    fpRatioChip.textContent = `${FLOORPLAN_OUT_SIZE}×${FLOORPLAN_OUT_SIZE} · 1:1 · ${fpExportPPI}ppi`;
+    fpRatioChip.textContent = `${fpOutSize}×${fpOutSize} · 1:1 · ${fpExportPPI}ppi`;
   }
   fpRes300.addEventListener('change', () => { fpSyncResPills(); fpRender(); });
   fpRes1200.addEventListener('change', () => { fpSyncResPills(); fpRender(); });
+
+  function fpSyncSizePills(){
+    const is1800 = fpSize1800.checked;
+    fpSize900Pill.classList.toggle('on', !is1800);
+    fpSize1800Pill.classList.toggle('on', is1800);
+    fpOutSize = is1800 ? 1800 : 900;
+    fpSyncResPills(); // refreshes the chip text with the new size
+    fpRender();       // refreshes the size shown on each card
+  }
+  fpSize900.addEventListener('change', fpSyncSizePills);
+  fpSize1800.addEventListener('change', fpSyncSizePills);
 
   function fpUid(){ return 'fp_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 
