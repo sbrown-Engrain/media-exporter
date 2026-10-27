@@ -121,6 +121,11 @@
   .fmt-pill .fmt-hint{margin-left:auto; font-size:10px; font-weight:700; letter-spacing:.04em; color:var(--slate-400);}
   .fmt-pill.on .fmt-hint{color:var(--indigo-600);}
 
+  /* Small explanatory notes under sidebar controls. These were plain <p class="t2"> elements, but
+     .t2 is only styled inside the dropzone and empty-state, so out there it fell back to the
+     browser's default 16px black text. */
+  .side-note{font-size:11px; line-height:1.45; color:var(--slate-500); margin:6px 0 0; padding:0 2px; text-align:left;}
+
   .page-select-row{
     width:100%; flex:none; justify-content:flex-start; box-sizing:border-box;
   }
@@ -293,7 +298,7 @@
       <div class="section">
         <p class="section-label">Property Name</p>
         <input type="text" id="propertyName" placeholder="e.g. Sunset Ridge" />
-        <p class="t2" style="margin-top:6px; text-align:left; padding:0 2px;">Used only to name the exported zip file — individual photo names are unaffected.</p>
+        <p class="side-note">Used only to name the exported zip file — individual photo names are unaffected.</p>
       </div>
 
       <div class="section">
@@ -349,7 +354,7 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
           Apply to All Photos
         </button>
-        <p class="t2" style="margin-top:6px; text-align:left; padding:0 2px;">Sets the crop position on every landscape photo that has one. Portrait photos aren't affected.</p>
+        <p class="side-note">Sets the crop position on every landscape photo that has one. Portrait photos aren't affected.</p>
         <div id="universalHBlock" style="display:none; margin-top:14px;">
           <p class="section-label" style="margin-bottom:8px;">Left / Right (4:3 only)</p>
           <div class="vpos-control">
@@ -384,7 +389,7 @@
         <div class="section">
           <p class="section-label">Property Name</p>
           <input type="text" id="uiZipPropertyName" placeholder="e.g. Sunset Ridge" />
-          <p class="t2" style="margin-top:6px; text-align:left; padding:0 2px;">Used only to name the exported zip file — image names and the config CSV are unaffected.</p>
+          <p class="side-note">Used only to name the exported zip file — image names and the config CSV are unaffected.</p>
         </div>
 
         <div class="section">
@@ -394,7 +399,7 @@
             Upload Unit Data CSV
           </button>
           <input type="file" id="uiCsvInput" accept=".csv,text/csv" style="display:none" />
-          <p class="t2" id="uiCsvStatus" style="margin-top:6px; text-align:left; padding:0 2px;">No CSV loaded — matched by unit number or floor plan name in each image's filename.</p>
+          <p class="side-note" id="uiCsvStatus">No CSV loaded — matched by unit number or floor plan name in each image's filename.</p>
           <div style="margin-top:10px;">
             <p class="section-label" style="margin-bottom:6px;">Property ID</p>
             <input type="text" id="uiPropertyId" placeholder="Auto-filled from CSV name" />
@@ -411,8 +416,8 @@
             </div>
             <div id="uiCustomOrderFields" style="display:none; margin-top:8px;">
               <div id="uiCustomOrderRows"></div>
-              <p class="t2" id="uiCustomOrderEmpty" style="margin-top:6px; text-align:left; padding:0 2px; display:none;">Upload photos and match them to units first — a Primary/Secondary picker will appear here for each floor plan found.</p>
-              <p class="t2" style="margin-top:6px; text-align:left; padding:0 2px;">Overrides the standard priority order. Automatic uses Interior (Living Room &gt; Kitchen &gt; Bedroom &gt; Bathroom &gt; Closet &amp; Other) &gt; Exterior &gt; View Image &gt; Other.</p>
+              <p class="side-note" id="uiCustomOrderEmpty" style="display:none;">Upload photos and match them to units first — a Primary/Secondary picker will appear here for each floor plan found.</p>
+              <p class="side-note">Overrides the standard priority order. Automatic uses Interior (Living Room &gt; Kitchen &gt; Bedroom &gt; Bathroom &gt; Closet &amp; Other) &gt; Exterior &gt; View Image &gt; Other.</p>
             </div>
           </div>
           <button type="button" class="btn" id="uiConfigCsvBtn" style="margin-top:8px;" disabled>
@@ -424,7 +429,7 @@
         <div class="section">
           <p class="section-label">Fallback Floor Plan Name</p>
           <input type="text" id="uiFloorPlanName" placeholder="e.g. Cerulean" />
-          <p class="t2" style="margin-top:6px; text-align:left; padding:0 2px;">Used only when a photo's filename doesn't match anything in the CSV.</p>
+          <p class="side-note">Used only when a photo's filename doesn't match anything in the CSV.</p>
         </div>
 
         <div class="section">
@@ -486,7 +491,7 @@
         <div class="section">
           <p class="section-label">Property Name</p>
           <input type="text" id="fpPropertyName" placeholder="e.g. Sunset Ridge" />
-          <p class="t2" style="margin-top:6px; text-align:left; padding:0 2px;">Used only to name the exported zip file — individual file names are unaffected.</p>
+          <p class="side-note">Used only to name the exported zip file — individual file names are unaffected.</p>
         </div>
 
         <div class="section">
